@@ -49,7 +49,11 @@ INTENT_KEYWORDS: List[tuple[str, str]] = [
     (r"character.design|appearance|redesign|character look", "change_character_design"),
     (r"subtitle|caption|text.overlay", "remove_subtitle"),
     (r"speed up|faster|slow|slower|timing", "speed_up_scene"),
-    (r"dialogue|edit.scene.text|modify.line|change.line|change.scene|edit.scene", "change_scene_dialogue"),
+    (
+        r"dialogue|edit.scene.text|modify.line|change.line|change.scene|edit.scene|"
+        r"edit\s+the\s+scene|edit\s+scene|scene\s+dialogue|rewrite\s+line",
+        "change_scene_dialogue",
+    ),
     (r"script|story|rewrite|regenerate", "regenerate_script"),
     (r"scene|frame|image|picture|visual|render", "re_generate_visuals"),
     (r"video|compose|export|mp4|output", "recompose_video"),
@@ -161,6 +165,65 @@ def _filter_scenes_by_scope(
     return scenes
 
 
+def _merge_scene_tracks(
+    existing: List[Dict[str, Any]], updates: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Replace entries by scene_id so a partial re-run does not drop other scenes from state."""
+    out: List[Dict[str, Any]] = []
+    index: Dict[str, int] = {}
+    for x in existing or []:
+        if not isinstance(x, dict):
+            continue
+        sid = str(x.get("scene_id", "")).strip()
+        if not sid:
+            continue
+        index[sid] = len(out)
+        out.append(dict(x))
+    for u in updates or []:
+        if not isinstance(u, dict):
+            continue
+        sid = str(u.get("scene_id", "")).strip()
+        if not sid:
+            continue
+        if sid in index:
+            out[index[sid]] = dict(u)
+        else:
+            index[sid] = len(out)
+            out.append(dict(u))
+    return out
+
+
+def _finalize_scene_media(
+    state: Dict[str, Any],
+    partial_audio: List[Dict[str, Any]],
+    partial_video: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Re-run face swap + lip-sync like the main graph so raw .mp4 files match new frames/audio."""
+    from agents.face_swap import face_swap_agent
+    from agents.lip_sync import lip_sync_agent
+
+    merged_audio = _merge_scene_tracks(state.get("audio_tracks") or [], partial_audio or [])
+    merged_video = _merge_scene_tracks(state.get("video_tracks") or [], partial_video or [])
+
+    sub: Dict[str, Any] = {
+        "scene_manifest_data": state.get("scene_manifest_data", {}),
+        "scene_tasks": state.get("scene_tasks", []),
+        "images": state.get("images", []),
+        "audio_tracks": merged_audio,
+        "video_tracks": merged_video,
+        "face_swaps": state.get("face_swaps", []),
+        "llm_invocations": state.get("llm_invocations", []),
+    }
+    sub.update(face_swap_agent(sub))
+    sub.update(lip_sync_agent(sub))
+    return {
+        "audio_tracks": merged_audio,
+        "video_tracks": merged_video,
+        "face_swaps": sub.get("face_swaps", []),
+        "raw_scenes": sub.get("raw_scenes", []),
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Edit executors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,7 +246,15 @@ def _execute_audio_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
         "llm_invocations": [],
     }
     result = voice_synth_agent(base)
-    return {"audio_edit_applied": True, "audio_tracks": result.get("audio_tracks", []), **result}
+    partial_audio = result.get("audio_tracks", [])
+    manifest_full = state.get("scene_manifest_data", {}) if isinstance(state.get("scene_manifest_data"), dict) else {}
+    finalized = _finalize_scene_media(state, partial_audio, [])
+    return {
+        "audio_edit_applied": True,
+        **result,
+        **finalized,
+        "scene_manifest_data": manifest_full,
+    }
 
 
 def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
@@ -194,6 +265,7 @@ def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> 
     scope = intent.get("scope", "all")
     scene_manifest = state.get("scene_manifest_data", {})
 
+    target_scenes: List[Any] = []
     if isinstance(scene_manifest, dict):
         scenes = scene_manifest.get("scenes", [])
         target_scenes = _filter_scenes_by_scope(scenes, scope)
@@ -223,6 +295,8 @@ def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> 
         "llm_invocations": [],
     }
     result = video_gen_agent(base)
+    partial_video = result.get("video_tracks", [])
+    finalized = _finalize_scene_media(state, [], partial_video)
 
     # Report which scenes were regenerated
     regen_ids = [s.get("scene_id") for s in target_scenes] if isinstance(scene_manifest, dict) else []
@@ -230,6 +304,8 @@ def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> 
         "video_frame_edit_applied": True,
         "regenerated_scenes": regen_ids,
         **result,
+        **finalized,
+        "scene_manifest_data": scene_manifest if isinstance(scene_manifest, dict) else {},
     }
 
 
@@ -330,11 +406,16 @@ def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
     })
 
     regen_ids = [s.get("scene_id") for s in target_scenes]
+    finalized = _finalize_scene_media(
+        state,
+        audio_result.get("audio_tracks", []),
+        video_result.get("video_tracks", []),
+    )
     return {
         "scene_edit_applied": True,
         "regenerated_scenes": regen_ids,
-        "audio_tracks": audio_result.get("audio_tracks", []),
-        "video_tracks": video_result.get("video_tracks", []),
+        "scene_manifest_data": scene_manifest,
+        **finalized,
     }
 
 

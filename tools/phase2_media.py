@@ -27,6 +27,12 @@ def _slugify(value: str) -> str:
     return slug[:64] or "asset"
 
 
+def phase2_face_swap_enabled() -> bool:
+    """When false, skip OpenCV face swap and use generated frames as-is (set PHASE2_FACE_SWAP_ENABLED=0)."""
+    raw = (os.getenv("PHASE2_FACE_SWAP_ENABLED") or "true").strip().lower()
+    return raw not in {"0", "false", "no", "off", "disabled"}
+
+
 def _safe_text(text: str) -> str:
     return (text or "").strip() or "Narration placeholder."
 
@@ -183,16 +189,24 @@ def _run_async(coro):
             loop.close()
 
 
-def _edge_tts_to_wav(path: Path, text: str, character_name: str, emotion: str) -> bool:
-    voice_pool = [
-        "en-US-AriaNeural",
-        "en-US-GuyNeural",
-        "en-US-JennyNeural",
-        "en-GB-SoniaNeural",
-        "en-GB-RyanNeural",
-    ]
-    idx = int(hashlib.md5(character_name.encode("utf-8")).hexdigest(), 16) % len(voice_pool)
-    voice = voice_pool[idx]
+def _edge_tts_voice_for_character(character_name: str, voice_gender: str = "") -> str:
+    """Pick a stable Edge voice per character; respect voice_gender when male/female."""
+    male = ["en-US-GuyNeural", "en-GB-RyanNeural"]
+    female = ["en-US-AriaNeural", "en-US-JennyNeural", "en-GB-SoniaNeural"]
+    neutral = male + female
+    g = (voice_gender or "neutral").strip().lower()
+    if g in ("male", "m", "man", "boy", "masculine"):
+        pool = male
+    elif g in ("female", "f", "woman", "girl", "feminine"):
+        pool = female
+    else:
+        pool = neutral
+    idx = int(hashlib.md5(character_name.encode("utf-8")).hexdigest(), 16) % len(pool)
+    return pool[idx]
+
+
+def _edge_tts_to_wav(path: Path, text: str, character_name: str, emotion: str, voice_gender: str = "") -> bool:
+    voice = _edge_tts_voice_for_character(character_name, voice_gender)
 
     emo = (emotion or "neutral").lower()
     rate = "+0%"
@@ -235,11 +249,17 @@ def _is_valid_wav(path: Path) -> bool:
         return False
 
 
-def synthesize_voice_wav(path: Path, text: str, character_name: str, emotion: str = "neutral") -> Tuple[bool, str]:
+def synthesize_voice_wav(
+    path: Path,
+    text: str,
+    character_name: str,
+    emotion: str = "neutral",
+    voice_gender: str = "",
+) -> Tuple[bool, str]:
     path.parent.mkdir(parents=True, exist_ok=True)
     line = _safe_text(text)
 
-    if _edge_tts_to_wav(path, line, character_name, emotion):
+    if _edge_tts_to_wav(path, line, character_name, emotion, voice_gender=voice_gender):
         return True, "edge-tts"
 
     try:
@@ -657,6 +677,9 @@ def apply_face_swap_to_sequence(frame_sequence_dir: Path, reference_image: str, 
 
     frame_paths = sorted(frame_sequence_dir.glob("frame_*.png"))
     if not frame_paths:
+        return 0, str(frame_sequence_dir.resolve())
+
+    if not phase2_face_swap_enabled():
         return 0, str(frame_sequence_dir.resolve())
 
     swapped_dir = frame_sequence_dir / "face_swapped"

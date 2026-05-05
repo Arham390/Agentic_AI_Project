@@ -46,6 +46,7 @@ def _fallback_characters(script: str) -> List[Dict[str, object]]:
                 "personality": "Driven and expressive",
                 "appearance": "Derived from the screenplay context",
                 "reference_style": "cinematic portrait",
+                "voice_gender": "neutral",
                 "scenes": sorted(scenes),
             }
         )
@@ -72,6 +73,7 @@ def _try_llm_characters(script: str) -> Tuple[Optional[List[Dict[str, object]]],
     - Extract personality traits
     - Extract physical appearance
     - Mention scenes they appear in
+    - voice_gender: exactly one of "male", "female", or "neutral" — which spoken voice fits this character in dialogue (infer from role and pronouns; use "neutral" only if truly ambiguous).
 
     Return ONLY valid JSON list.
 
@@ -126,6 +128,11 @@ def character_agent(state):
             updated["appearance"] = updated["physical_appearance"]
         if "personality_traits" in updated and "personality" not in updated:
             updated["personality"] = updated["personality_traits"]
+
+        vg = str(updated.get("voice_gender", "neutral")).strip().lower()
+        if vg not in ("male", "female", "neutral"):
+            vg = "neutral"
+        updated["voice_gender"] = vg
 
         enriched.append(updated)
 

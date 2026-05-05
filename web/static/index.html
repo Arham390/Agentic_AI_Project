@@ -387,6 +387,7 @@ async function sendEdit(){
         }
         loadHistory();
         loadSceneSelector();
+        loadOutputs();
       }
       if(data.status==='failed'){
         const p=document.createElement('p');p.className='err';

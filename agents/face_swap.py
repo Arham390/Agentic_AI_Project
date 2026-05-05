@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import sys
 
 from tools.mcp_registry import invoke_tool
+from tools.phase2_media import phase2_face_swap_enabled
 
 
 def _scene_index(scene_manifest_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -121,6 +122,50 @@ def face_swap_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         images = []
 
     scene_lookup = _scene_index(state.get("scene_manifest_data", {}))
+
+    if not phase2_face_swap_enabled():
+        outputs_disabled: List[Dict[str, Any]] = []
+        for video in video_tracks:
+            scene_id = str(video.get("scene_id", "")).strip()
+            if not scene_id:
+                continue
+            frame_dir = _resolve_frames_dir(str(video.get("frame_sequence_dir", "")).strip())
+            scene = scene_lookup.get(scene_id, {})
+            reference_image = _reference_image_for_scene(scene, images)
+            expected_character = "Lead"
+            chars = _dialogue_characters(scene)
+            if chars:
+                expected_character = chars[0]
+            outputs_disabled.append(
+                {
+                    "scene_id": scene_id,
+                    "face_swap_report_path": "",
+                    "swapped_frame_sequence_dir": frame_dir,
+                    "identity_validated": False,
+                    "identity_confidence": 0.0,
+                    "expected_character": expected_character,
+                    "reference_image": reference_image,
+                    "mapped_frames": 0,
+                    "face_detect_rate": 0.0,
+                    "face_swap_disabled": True,
+                    "quality": {"passed": True},
+                    "attempt_logs": [],
+                }
+            )
+        try:
+            invoke_tool(
+                "commit_memory",
+                {
+                    "data": {
+                        "agent": "face_swap",
+                        "scene_count": len(outputs_disabled),
+                        "face_swap_disabled": True,
+                    }
+                },
+            )
+        except Exception:
+            pass
+        return {"face_swaps": outputs_disabled}
 
     outputs: List[Dict[str, Any]] = []
     retries = max(1, int(os.getenv("PHASE2_SCENE_RETRIES", "2")))
