@@ -136,19 +136,53 @@ def _run_phase_job(job_id: str, phase: str, params: Dict[str, Any]) -> None:
         job["progress"].append(f"Phase failed: {exc}")
 
 
-def _run_edit_job(job_id: str, query: str) -> None:
+def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
     job = _jobs[job_id]
     try:
         job["progress"].append(f"Processing edit: {query}")
-        manifest_path = OUTPUTS_DIR / "scene_manifest.json"
+
+        # Load full current state from latest snapshot (not just manifest)
         current_state: Dict[str, Any] = {}
-        if manifest_path.exists():
+        history = _state_manager.history()
+        if history:
+            latest_version = history[-1]["version"]
+            restored = _state_manager.revert(latest_version)
+            if isinstance(restored, dict):
+                current_state = restored
+                job["progress"].append(f"Loaded state from snapshot v{latest_version}")
+
+        # Fallback: at minimum load manifest from disk
+        manifest_path = OUTPUTS_DIR / "scene_manifest.json"
+        if "scene_manifest_data" not in current_state and manifest_path.exists():
             current_state["scene_manifest_data"] = json.loads(
                 manifest_path.read_text(encoding="utf-8")
             )
-        result = process_edit(query, current_state, _state_manager)
+
+        # If a specific scene_id was provided, inject it into the query scope
+        if scene_id:
+            job["progress"].append(f"Targeting scene: {scene_id}")
+
+        result = process_edit(query, current_state, _state_manager, scene_id=scene_id)
+
+        # Persist updated manifest back to disk so Outputs tab reflects changes
+        edit_result = result.get("edit_result", {})
+        if isinstance(edit_result, dict):
+            updated_manifest = edit_result.get("scene_manifest_data")
+            if isinstance(updated_manifest, dict):
+                manifest_path.write_text(
+                    json.dumps(updated_manifest, indent=2, ensure_ascii=True),
+                    encoding="utf-8",
+                )
+                job["progress"].append("Updated scene_manifest.json on disk")
+
+        intent = result.get("intent", {})
+        regen = edit_result.get("regenerated_scenes", [])
+        regen_msg = f" Regenerated: {regen}" if regen else ""
+
         job.update({"status": "completed", "result": result})
-        job["progress"].append(f"Edit applied. Intent: {result.get('intent', {}).get('intent', '?')}")
+        job["progress"].append(
+            f"Edit applied. Intent: {intent.get('intent', '?')}{regen_msg}"
+        )
     except Exception as exc:
         job.update({"status": "failed", "error": str(exc)})
         job["progress"].append(f"Edit failed: {exc}")
@@ -291,11 +325,12 @@ async def get_scenes():
 async def edit_endpoint(request: Request, background_tasks: BackgroundTasks):
     data = await request.json()
     query = (data.get("query") or "").strip()
+    scene_id = (data.get("scene_id") or "").strip()
     if not query:
         raise HTTPException(400, "Provide 'query' with the edit instruction.")
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": "running", "progress": ["Edit queued…"], "result": None}
-    background_tasks.add_task(_run_edit_job, job_id, query)
+    background_tasks.add_task(_run_edit_job, job_id, query, scene_id)
     return {"job_id": job_id}
 
 

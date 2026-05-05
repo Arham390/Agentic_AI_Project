@@ -147,8 +147,20 @@
   <div class="card">
     <h2>✏️ Intelligent Edit Agent (Phase 5)</h2>
     <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">
-      Describe your edit in plain language. The agent classifies intent, executes the targeted change, and saves a snapshot so you can undo.
+      Describe your edit in plain language. Select a specific scene to target, or leave "All Scenes" to apply globally.
+      The agent classifies intent, executes the targeted change, and saves a snapshot so you can undo.
     </p>
+    <div class="row" style="margin-bottom:12px">
+      <div style="flex:1">
+        <label>Target Scene</label>
+        <select id="sceneSelector" style="width:100%;background:#252839;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:.9rem;outline:none">
+          <option value="">All Scenes</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto;align-self:flex-end">
+        <button class="btn btn-secondary" onclick="loadSceneSelector()" style="font-size:.8rem">🔄 Refresh</button>
+      </div>
+    </div>
     <label>Edit instruction</label>
     <input type="text" id="editQuery" placeholder='e.g. "Make the scene darker", "Change voice tone to dramatic", "Regenerate the script"' style="margin-bottom:12px"/>
     <div class="row">
@@ -160,6 +172,7 @@
     <div class="intent-box" id="intentBox" style="display:none">
       <strong>Detected Intent</strong>
       <pre id="intentPre" style="border:none;background:none;padding:6px 0;font-size:.82rem"></pre>
+      <div id="regenInfo" style="display:none;margin-top:8px;font-size:.82rem;color:var(--success)"></div>
     </div>
   </div>
 
@@ -172,6 +185,7 @@
       <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Regenerate the script with more drama')">📝 New script</button>
       <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Change character design to sci-fi aesthetic')">🤖 Sci-fi look</button>
       <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Speed up the pacing of the scenes')">⚡ Speed up</button>
+      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Change the dialogue tone')">💬 Edit dialogue</button>
     </div>
   </div>
 
@@ -200,6 +214,7 @@ function showTab(name){
   document.querySelectorAll('nav button')[['generate','outputs','edit','history'].indexOf(name)].classList.add('active');
   if(name==='outputs') loadOutputs();
   if(name==='history') loadHistory();
+  if(name==='edit') loadSceneSelector();
 }
 
 // ── Pipeline run ───────────────────────────────────────────────────────────
@@ -311,16 +326,37 @@ async function loadOutputs(){
 // ── Edit agent ─────────────────────────────────────────────────────────────
 function setEdit(q){document.getElementById('editQuery').value=q;}
 
+async function loadSceneSelector(){
+  const sel=document.getElementById('sceneSelector');
+  sel.innerHTML='<option value="">All Scenes</option>';
+  try{
+    const res=await fetch(API+'/api/scenes');
+    const data=await res.json();
+    const scenes=data.scenes||[];
+    scenes.forEach(s=>{
+      const opt=document.createElement('option');
+      opt.value=s.scene_id||'';
+      opt.textContent=`${s.scene_id} — ${(s.heading||'Untitled').substring(0,60)}`;
+      sel.appendChild(opt);
+    });
+  }catch(e){/* scenes not generated yet */}
+}
+
 async function sendEdit(){
   const query=document.getElementById('editQuery').value.trim();
   if(!query){alert('Enter an edit instruction.');return;}
+  const sceneId=document.getElementById('sceneSelector').value;
 
   document.getElementById('editProgress').style.display='block';
   document.getElementById('intentBox').style.display='none';
+  document.getElementById('regenInfo').style.display='none';
   const log=document.getElementById('editLog');
   log.innerHTML='<p>Processing edit…</p>';
 
-  const res=await fetch(API+'/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
+  const body={query};
+  if(sceneId) body.scene_id=sceneId;
+
+  const res=await fetch(API+'/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const {job_id}=await res.json();
 
   const es=new EventSource(API+'/api/status/'+job_id);
@@ -337,12 +373,20 @@ async function sendEdit(){
         document.getElementById('intentBox').style.display='block';
         const intent=data.result.intent||{};
         document.getElementById('intentPre').textContent=JSON.stringify(intent,null,2);
+        const editRes=data.result.edit_result||{};
+        const regen=editRes.regenerated_scenes||[];
+        if(regen.length){
+          const ri=document.getElementById('regenInfo');
+          ri.style.display='block';
+          ri.textContent='✓ Regenerated scenes: '+regen.join(', ');
+        }
         if(data.result.version){
           const p=document.createElement('p');p.className='done';
           p.textContent=`✓ Snapshot saved as version ${data.result.version}`;
           log.appendChild(p);
         }
         loadHistory();
+        loadSceneSelector();
       }
       if(data.status==='failed'){
         const p=document.createElement('p');p.className='err';

@@ -75,12 +75,27 @@ def _scene_seed(scene_id: str, heading: str, index: int = 0) -> int:
     return int(hashlib.sha256(material).hexdigest()[:8], 16)
 
 
-def _truncate_prompt(text: str, max_words: int = 72, max_chars: int = 420) -> str:
+def _truncate_prompt(text: str, max_words: int = 60, max_chars: int = 380) -> str:
     words = text.strip().split()
     compact = " ".join(words[:max_words])
     if len(compact) > max_chars:
         compact = compact[:max_chars].rstrip(" ,.;:-")
     return compact
+
+
+def _temp_dir(prefix: str = "") -> Path:
+    """Return a temp directory on D: (via TEMP_MEDIA_DIR) instead of C:\\Temp."""
+    base = _env_str("TEMP_MEDIA_DIR", "")
+    if base:
+        p = Path(base)
+    else:
+        p = Path(__file__).resolve().parents[1] / "temp_media"
+    p.mkdir(parents=True, exist_ok=True)
+    if prefix:
+        sub = p / prefix
+        sub.mkdir(parents=True, exist_ok=True)
+        return sub
+    return p
 
 
 def _expand_cmd(template: str, values: Dict[str, Any]) -> str:
@@ -1034,14 +1049,14 @@ def compose_scene_video(scene_id: str, audio_path: Path, frame_sequence_dir: Pat
             return False, backend
 
     if audio_path.exists() and _debug_placeholders_enabled():
-        lipsync_dir = Path(tempfile.mkdtemp(prefix=f"{_slugify(scene_id)}_lipsync_"))
+        lipsync_dir = _temp_dir(f"{_slugify(scene_id)}_lipsync")
         try:
             render_frames = _render_lipsync_frames(frame_paths, audio_path, lipsync_dir, target_count)
             lipsync_backend = "debug-audio-driven-lipsync"
         except Exception:
             render_frames = frame_paths
 
-    temp_video = Path(tempfile.gettempdir()) / f"{_slugify(scene_id)}_silent.mp4"
+    temp_video = _temp_dir() / f"{_slugify(scene_id)}_silent.mp4"
     try:
         writer = iio.get_writer(str(temp_video), fps=max(6, fps), codec="libx264")
         for fp in render_frames:

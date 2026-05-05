@@ -29,7 +29,7 @@ _pipe_key: Optional[Tuple[str, str]] = None
 _pipe_lock = threading.Lock()
 
 
-def _truncate_prompt(text: str, max_words: int = 72, max_chars: int = 420) -> str:
+def _truncate_prompt(text: str, max_words: int = 60, max_chars: int = 380) -> str:
     """Heuristic truncation to avoid CLIP 77-token overflows.
 
     Diffusers' CLIP text encoder commonly hard-limits to 77 tokens.
