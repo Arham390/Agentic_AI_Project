@@ -115,22 +115,23 @@ def _estimate_speech_duration_sec(scene: Dict[str, Any]) -> float:
 
 
 def _target_frame_count(scene: Dict[str, Any], scene_id: str, state: Dict[str, Any]) -> int:
+    """Return the number of frames needed for this scene.
+
+    Frame count tracks the actual audio duration so that the visual length
+    matches the speech exactly — no artificial padding or stretching.
+    """
     dialogues = scene.get("dialogues", [])
     dialogue_count = len(dialogues) if isinstance(dialogues, list) else 0
     fps = max(6, int(os.getenv("PHASE2_VIDEO_TARGET_FPS", "24")))
     cap = max(60, int(os.getenv("PHASE2_MAX_SCENE_FRAMES", "720")))
-
-    # Minimum scene duration: derive a floor frame count from env setting.
-    min_dur_sec = max(0.0, float(os.getenv("PHASE2_MIN_SCENE_DURATION_SEC", "0") or "0"))
-    min_frames_from_dur = int(math.ceil(min_dur_sec * fps)) if min_dur_sec > 0 else 0
-    base = max(10, 8 + dialogue_count * 4, min_frames_from_dur)
+    base = max(10, 8 + dialogue_count * 4)
 
     dur = 0.0
     ap = _primary_audio_path(state, scene_id)
     if ap is not None and ap.exists():
         dur = float(_audio_duration_seconds(ap))
     if dur <= 0.0:
-        dur = max(_estimate_speech_duration_sec(scene), min_dur_sec)
+        dur = _estimate_speech_duration_sec(scene)
 
     needed = int(math.ceil(dur * fps))
     return min(cap, max(base, needed))
