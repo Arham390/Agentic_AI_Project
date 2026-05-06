@@ -348,14 +348,19 @@ def _build_video_gen_state(
     target_scenes: List[Dict[str, Any]],
     characters: List[Dict[str, Any]],
     images: List[Dict[str, Any]],
+    audio_tracks: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    return {
+    """Optional *audio_tracks* lets video_gen size frame counts to WAV length (edit pipeline order)."""
+    out: Dict[str, Any] = {
         "scene_manifest_data": {**manifest, "scenes": target_scenes},
         "video_tracks": [],
         "images": images,
         "characters": characters,
         "llm_invocations": [],
     }
+    if audio_tracks:
+        out["audio_tracks"] = list(audio_tracks)
+    return out
 
 
 def _finalize_scene_media(
@@ -514,9 +519,11 @@ def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> 
 
     video_result = video_gen_agent(
         _build_video_gen_state(
-            updated_manifest, target_scenes,
+            updated_manifest,
+            target_scenes,
             state.get("characters") or [],
             state.get("images") or [],
+            state.get("audio_tracks") or [],
         )
     )
 
@@ -599,7 +606,13 @@ def _execute_script_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[
             _build_voice_synth_state(new_manifest, scenes, s.get("characters") or [])
         )
         video_result = video_gen_agent(
-            _build_video_gen_state(new_manifest, scenes, s.get("characters") or [], s.get("images") or [])
+            _build_video_gen_state(
+                new_manifest,
+                scenes,
+                s.get("characters") or [],
+                s.get("images") or [],
+                audio_result.get("audio_tracks") or [],
+            )
         )
         finalized = _finalize_scene_media(
             s, new_manifest,
@@ -674,9 +687,11 @@ def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
     # ── Step 5: regenerate frames for the targeted scenes ──────────────────
     video_result = video_gen_agent(
         _build_video_gen_state(
-            working_manifest, target_scenes,
+            working_manifest,
+            target_scenes,
             state.get("characters") or [],
             state.get("images") or [],
+            audio_result.get("audio_tracks") or [],
         )
     )
 

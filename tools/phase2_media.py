@@ -1002,10 +1002,22 @@ def _render_lipsync_frames(frame_paths: List[Path], audio_path: Path, out_dir: P
     if not envelope:
         envelope = [0.35] * total
 
+    n_src = len(frame_paths)
+    if n_src <= 0:
+        return []
+    loaded = [Image.open(p).convert("RGBA") for p in frame_paths]
+
     rendered: List[Path] = []
     for idx in range(total):
-        source_path = frame_paths[idx % len(frame_paths)]
-        frame = Image.open(source_path).convert("RGBA")
+        span = max(1, n_src - 1)
+        u = (idx / max(1, total - 1)) * span
+        lo = int(math.floor(u))
+        hi = min(n_src - 1, lo + 1)
+        alpha = max(0.0, min(1.0, u - lo))
+        if lo == hi:
+            frame = loaded[lo].copy()
+        else:
+            frame = Image.blend(loaded[lo], loaded[hi], alpha).convert("RGBA")
         frame = _apply_camera_motion(frame, idx, total)
         draw = ImageDraw.Draw(frame, "RGBA")
 
