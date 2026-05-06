@@ -182,8 +182,25 @@ def _execute_audio_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
         "audio_tracks": [],
         "llm_invocations": [],
     }
-    result = voice_synth_agent(base)
-    return {"audio_edit_applied": True, "audio_tracks": result.get("audio_tracks", []), **result}
+    audio_res = voice_synth_agent(base)
+
+    # Lip sync must be re-run with the new audio
+    from agents.lip_sync import lip_sync_agent
+    ls_base = {
+        "scene_manifest_data": filtered_manifest,
+        "audio_tracks": audio_res.get("audio_tracks", []),
+        "video_tracks": state.get("video_tracks", []),
+        "face_swaps": state.get("face_swaps", []),
+        "scene_tasks": state.get("scene_tasks", []),
+        "raw_scenes": [],
+    }
+    ls_res = lip_sync_agent(ls_base)
+
+    return {
+        "audio_edit_applied": True,
+        "audio_tracks": audio_res.get("audio_tracks", []),
+        **ls_res,
+    }
 
 
 def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
@@ -222,14 +239,39 @@ def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> 
         "images": state.get("images", []),
         "llm_invocations": [],
     }
-    result = video_gen_agent(base)
+    video_res = video_gen_agent(base)
+
+    # Face swap must be re-run on the new frames
+    from agents.face_swap import face_swap_agent
+    fs_base = {
+        "scene_manifest_data": filtered_manifest,
+        "video_tracks": video_res.get("video_tracks", []),
+        "images": state.get("images", []),
+        "require_hitl": state.get("require_hitl", False),
+    }
+    fs_res = face_swap_agent(fs_base)
+
+    # Lip sync must be re-run to produce the final video
+    from agents.lip_sync import lip_sync_agent
+    ls_base = {
+        "scene_manifest_data": filtered_manifest,
+        "audio_tracks": state.get("audio_tracks", []),
+        "video_tracks": video_res.get("video_tracks", []),
+        "face_swaps": fs_res.get("face_swaps", []),
+        "scene_tasks": state.get("scene_tasks", []),
+        "raw_scenes": [],
+        "require_hitl": state.get("require_hitl", False),
+    }
+    ls_res = lip_sync_agent(ls_base)
 
     # Report which scenes were regenerated
     regen_ids = [s.get("scene_id") for s in target_scenes] if isinstance(scene_manifest, dict) else []
     return {
         "video_frame_edit_applied": True,
         "regenerated_scenes": regen_ids,
-        **result,
+        "video_tracks": video_res.get("video_tracks", []),
+        "face_swaps": fs_res.get("face_swaps", []),
+        **ls_res,
     }
 
 
@@ -289,6 +331,24 @@ def _execute_script_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[
     if isinstance(manifest, dict):
         _write_manifest(manifest)
 
+    # Now cascade downstream to generate the actual media for the new script
+    from agents.voice_synth import voice_synth_agent
+    from agents.video_gen import video_gen_agent
+    from agents.face_swap import face_swap_agent
+    from agents.lip_sync import lip_sync_agent
+
+    audio_res = voice_synth_agent(s)
+    s.update(audio_res)
+
+    video_res = video_gen_agent(s)
+    s.update(video_res)
+
+    fs_res = face_swap_agent(s)
+    s.update(fs_res)
+
+    ls_res = lip_sync_agent(s)
+    s.update(ls_res)
+
     return {"script_edit_applied": True, **s}
 
 
@@ -329,12 +389,35 @@ def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
         "llm_invocations": [],
     })
 
+    # Run face swap
+    from agents.face_swap import face_swap_agent
+    fs_result = face_swap_agent({
+        "scene_manifest_data": audio_manifest,
+        "video_tracks": video_result.get("video_tracks", []),
+        "images": state.get("images", []),
+        "require_hitl": state.get("require_hitl", False),
+    })
+
+    # Run lip sync
+    from agents.lip_sync import lip_sync_agent
+    ls_result = lip_sync_agent({
+        "scene_manifest_data": audio_manifest,
+        "audio_tracks": audio_result.get("audio_tracks", []),
+        "video_tracks": video_result.get("video_tracks", []),
+        "face_swaps": fs_result.get("face_swaps", []),
+        "scene_tasks": state.get("scene_tasks", []),
+        "raw_scenes": [],
+        "require_hitl": state.get("require_hitl", False),
+    })
+
     regen_ids = [s.get("scene_id") for s in target_scenes]
     return {
         "scene_edit_applied": True,
         "regenerated_scenes": regen_ids,
         "audio_tracks": audio_result.get("audio_tracks", []),
         "video_tracks": video_result.get("video_tracks", []),
+        "face_swaps": fs_result.get("face_swaps", []),
+        "raw_scenes": ls_result.get("raw_scenes", []),
     }
 
 

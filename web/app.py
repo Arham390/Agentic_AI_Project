@@ -146,7 +146,7 @@ def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
         history = _state_manager.history()
         if history:
             latest_version = history[-1]["version"]
-            restored = _state_manager.revert(latest_version)
+            restored = _state_manager.load_state(latest_version)
             if isinstance(restored, dict):
                 current_state = restored
                 job["progress"].append(f"Loaded state from snapshot v{latest_version}")

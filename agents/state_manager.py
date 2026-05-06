@@ -130,6 +130,26 @@ class StateManager:
 
         return state
 
+    def load_state(self, version: int) -> Optional[Dict[str, Any]]:
+        """Read the state dict for *version* WITHOUT restoring output files.
+
+        Use this when you need the state data (e.g. images, audio_tracks) for
+        edit operations but don't want to overwrite the current output files.
+        """
+        index = self._load_index()
+        entry = next((e for e in index if e["version"] == version), None)
+        if entry is None:
+            return None
+
+        vdir = self._version_dir(version)
+        state_path = vdir / "state.json"
+        if not state_path.exists():
+            return None
+        try:
+            return json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
     def history(self) -> List[Dict[str, Any]]:
         """Return all version entries (newest last)."""
         return self._load_index()
