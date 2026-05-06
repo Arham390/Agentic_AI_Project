@@ -118,6 +118,21 @@ class StateManager:
         except Exception:
             return None
 
+        # Older snapshots may omit large lists from state.json; merge sidecar JSON if present.
+        for aux_key in ("video_tracks", "audio_tracks", "face_swaps", "raw_scenes"):
+            aux_path = vdir / f"{aux_key}.json"
+            if not aux_path.exists():
+                continue
+            try:
+                aux_val = json.loads(aux_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(aux_val, list) or not aux_val:
+                continue
+            cur = state.get(aux_key)
+            if not isinstance(cur, list) or len(cur) == 0:
+                state[aux_key] = aux_val
+
         # Restore output files.
         for fname in entry.get("assets", {}).keys():
             src = vdir / fname

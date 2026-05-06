@@ -9,6 +9,7 @@ from tools.phase2_media import (
     apply_face_swap_to_sequence,
     compose_scene_video,
     motion_score_for_frames,
+    phase2_face_swap_enabled,
     render_scene_frame_sequence,
     sync_confidence_for_scene,
     synthesize_voice_wav,
@@ -226,6 +227,7 @@ def voice_cloning_synthesizer(
     character_name: str,
     text: str,
     emotion: str = "neutral",
+    voice_gender: str = "",
 ) -> str:
     output_dir = Path(__file__).resolve().parents[1] / "outputs" / "audio_tracks"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -237,6 +239,7 @@ def voice_cloning_synthesizer(
         text=text,
         character_name=character_name,
         emotion=emotion,
+        voice_gender=voice_gender or "",
     )
     if not ok:
         raise RuntimeError("Voice synthesis failed")
@@ -250,6 +253,7 @@ def voice_cloning_synthesizer(
                 "emotion": emotion,
                 "text": text,
                 "backend": backend,
+                "voice_gender": (voice_gender or "").strip().lower() or "neutral",
             },
             indent=2,
         ),
@@ -263,6 +267,24 @@ def face_swapper(scene_id: str, frame_sequence_dir: str, reference_image: str) -
     scene_dir = Path(frame_sequence_dir)
     scene_dir.mkdir(parents=True, exist_ok=True)
     report_path = scene_dir / f"{_slugify(scene_id)}_face_swap_report.json"
+
+    if not phase2_face_swap_enabled():
+        payload = {
+            "scene_id": scene_id,
+            "frame_sequence_dir": str(scene_dir.resolve()),
+            "swapped_frame_sequence_dir": str(scene_dir.resolve()),
+            "reference_image": reference_image,
+            "mapped_frames": 0,
+            "has_reference_image": bool(
+                reference_image
+                and Path(reference_image).exists()
+                and Path(reference_image).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+            ),
+            "status": "skipped",
+            "face_swap_disabled": True,
+        }
+        report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return str(report_path.resolve())
 
     mapped, swapped_dir = apply_face_swap_to_sequence(
         frame_sequence_dir=scene_dir,
@@ -479,6 +501,10 @@ TOOL_METADATA: Dict[str, Dict[str, Any]] = {
                 "character_name": {"type": "string"},
                 "text": {"type": "string"},
                 "emotion": {"type": "string"},
+                "voice_gender": {
+                    "type": "string",
+                    "description": "male | female | neutral (from character sheet)",
+                },
             },
         },
     },

@@ -164,8 +164,14 @@ def route_phase2_dispatch(state):
     for scene in scenes:
         if not isinstance(scene, dict):
             continue
-        sends.append(Send("voice_synth", {"scene_payload": scene}))
-        sends.append(Send("video_gen", {"scene_payload": scene}))
+        shared = {
+            "scene_payload": scene,
+            "characters": state.get("characters") or [],
+            "images": state.get("images") or [],
+            "scene_manifest_data": state.get("scene_manifest_data") or {},
+        }
+        sends.append(Send("voice_synth", shared))
+        sends.append(Send("video_gen", shared))
     return sends or ["voice_synth", "video_gen"]
 
 

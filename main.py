@@ -90,6 +90,48 @@ def _parse_script_to_scenes(script: str) -> List[Dict[str, Any]]:
 	return scenes
 
 
+def script_text_from_scene_manifest(manifest: Dict[str, Any]) -> str:
+	"""Rebuild screenplay text from structured scenes so script.txt matches the manifest."""
+	scenes = manifest.get("scenes") if isinstance(manifest, dict) else None
+	if not isinstance(scenes, list):
+		return ""
+
+	lines: List[str] = []
+	for scene in scenes:
+		if not isinstance(scene, dict):
+			continue
+		heading = str(scene.get("heading", "")).strip()
+		if heading:
+			lines.append(heading)
+
+		raw_lines = scene.get("raw_lines")
+		if isinstance(raw_lines, list) and raw_lines:
+			for raw in raw_lines:
+				s = str(raw).strip()
+				if s:
+					lines.append(s)
+			lines.append("")
+			continue
+
+		for act in scene.get("actions") or []:
+			if isinstance(act, str) and act.strip():
+				lines.append(act.strip())
+
+		for d in scene.get("dialogues") or []:
+			if not isinstance(d, dict):
+				continue
+			ch = str(d.get("character", "")).strip()
+			ln = str(d.get("line", d.get("text", ""))).strip()
+			if ch and ln:
+				lines.append(f"{ch.upper()}: {ln}")
+			elif ln:
+				lines.append(ln)
+
+		lines.append("")
+
+	return "\n".join(lines).strip()
+
+
 def _build_scene_manifest(result: Dict[str, Any], script: str) -> Dict[str, Any]:
 	scenes = _parse_script_to_scenes(script)
 	out: Dict[str, Any] = {
@@ -157,7 +199,6 @@ def persist_outputs(result: Dict[str, Any]) -> Dict[str, Path]:
 	character_db_path = output_dir / "character_db.json"
 	scene_manifest_path = output_dir / "scene_manifest.json"
 
-	script_path.write_text(script_text, encoding="utf-8")
 	_write_json(
 		character_db_path,
 		{
@@ -168,6 +209,12 @@ def persist_outputs(result: Dict[str, Any]) -> Dict[str, Path]:
 	scene_manifest_payload = result.get("scene_manifest_data")
 	if not isinstance(scene_manifest_payload, dict) or not scene_manifest_payload.get("scenes"):
 		scene_manifest_payload = _build_scene_manifest(result, script_text)
+
+	derived_script = script_text_from_scene_manifest(scene_manifest_payload)
+	if derived_script.strip():
+		script_text = derived_script.strip() + "\n"
+
+	script_path.write_text(script_text, encoding="utf-8")
 	_write_json(scene_manifest_path, scene_manifest_payload)
 
 	return {

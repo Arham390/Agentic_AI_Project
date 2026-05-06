@@ -27,6 +27,12 @@ def _slugify(value: str) -> str:
     return slug[:64] or "asset"
 
 
+def phase2_face_swap_enabled() -> bool:
+    """When false, skip OpenCV face swap and use generated frames as-is (set PHASE2_FACE_SWAP_ENABLED=0)."""
+    raw = (os.getenv("PHASE2_FACE_SWAP_ENABLED") or "true").strip().lower()
+    return raw not in {"0", "false", "no", "off", "disabled"}
+
+
 def _safe_text(text: str) -> str:
     return (text or "").strip() or "Narration placeholder."
 
@@ -183,16 +189,24 @@ def _run_async(coro):
             loop.close()
 
 
-def _edge_tts_to_wav(path: Path, text: str, character_name: str, emotion: str) -> bool:
-    voice_pool = [
-        "en-US-AriaNeural",
-        "en-US-GuyNeural",
-        "en-US-JennyNeural",
-        "en-GB-SoniaNeural",
-        "en-GB-RyanNeural",
-    ]
-    idx = int(hashlib.md5(character_name.encode("utf-8")).hexdigest(), 16) % len(voice_pool)
-    voice = voice_pool[idx]
+def _edge_tts_voice_for_character(character_name: str, voice_gender: str = "") -> str:
+    """Pick a stable Edge voice per character; respect voice_gender when male/female."""
+    male = ["en-US-GuyNeural", "en-GB-RyanNeural"]
+    female = ["en-US-AriaNeural", "en-US-JennyNeural", "en-GB-SoniaNeural"]
+    neutral = male + female
+    g = (voice_gender or "neutral").strip().lower()
+    if g in ("male", "m", "man", "boy", "masculine"):
+        pool = male
+    elif g in ("female", "f", "woman", "girl", "feminine"):
+        pool = female
+    else:
+        pool = neutral
+    idx = int(hashlib.md5(character_name.encode("utf-8")).hexdigest(), 16) % len(pool)
+    return pool[idx]
+
+
+def _edge_tts_to_wav(path: Path, text: str, character_name: str, emotion: str, voice_gender: str = "") -> bool:
+    voice = _edge_tts_voice_for_character(character_name, voice_gender)
 
     emo = (emotion or "neutral").lower()
     rate = "+0%"
@@ -235,11 +249,17 @@ def _is_valid_wav(path: Path) -> bool:
         return False
 
 
-def synthesize_voice_wav(path: Path, text: str, character_name: str, emotion: str = "neutral") -> Tuple[bool, str]:
+def synthesize_voice_wav(
+    path: Path,
+    text: str,
+    character_name: str,
+    emotion: str = "neutral",
+    voice_gender: str = "",
+) -> Tuple[bool, str]:
     path.parent.mkdir(parents=True, exist_ok=True)
     line = _safe_text(text)
 
-    if _edge_tts_to_wav(path, line, character_name, emotion):
+    if _edge_tts_to_wav(path, line, character_name, emotion, voice_gender=voice_gender):
         return True, "edge-tts"
 
     try:
@@ -334,6 +354,34 @@ def _generate_scene_keyframes(
     planned_keyframes = max(1, len(prompts))
     min_required = max(2, min(planned_keyframes, _env_int("PHASE2_MIN_KEYFRAMES", 3)))
     backend_errors: List[str] = []
+
+    # Prefer HuggingFace Inference API (serverless — no local GPU) when configured.
+    try:
+        from tools.local_sd import hf_inference_api_configured, generate_hf_inference_image
+
+        if hf_inference_api_configured():
+            out_paths: List[Path] = []
+            for i, prompt in enumerate(prompts, start=1):
+                dest = keyframe_dir / f"{_slugify(scene_id)}_kf_{i:02d}.png"
+                try:
+                    produced = Path(
+                        generate_hf_inference_image(
+                            prompt,
+                            dest,
+                            seed=_scene_seed(scene_id, heading, i),
+                        )
+                    )
+                    if produced.exists():
+                        out_paths.append(produced)
+                except Exception as exc:
+                    backend_errors.append(f"hf-inference-api:kf_{i:02d}:{exc}")
+            if len(out_paths) >= min_required:
+                return out_paths, "hf-inference-api", prompts
+            backend_errors.append(
+                f"hf-inference-api:generated={len(out_paths)} planned={planned_keyframes} min_required={min_required}"
+            )
+    except Exception:
+        pass
 
     # Prefer ComfyUI for high-quality scene generation when configured.
     try:
@@ -659,6 +707,9 @@ def apply_face_swap_to_sequence(frame_sequence_dir: Path, reference_image: str, 
     if not frame_paths:
         return 0, str(frame_sequence_dir.resolve())
 
+    if not phase2_face_swap_enabled():
+        return 0, str(frame_sequence_dir.resolve())
+
     swapped_dir = frame_sequence_dir / "face_swapped"
     swapped_dir.mkdir(parents=True, exist_ok=True)
 
@@ -979,10 +1030,22 @@ def _render_lipsync_frames(frame_paths: List[Path], audio_path: Path, out_dir: P
     if not envelope:
         envelope = [0.35] * total
 
+    n_src = len(frame_paths)
+    if n_src <= 0:
+        return []
+    loaded = [Image.open(p).convert("RGBA") for p in frame_paths]
+
     rendered: List[Path] = []
     for idx in range(total):
-        source_path = frame_paths[idx % len(frame_paths)]
-        frame = Image.open(source_path).convert("RGBA")
+        span = max(1, n_src - 1)
+        u = (idx / max(1, total - 1)) * span
+        lo = int(math.floor(u))
+        hi = min(n_src - 1, lo + 1)
+        alpha = max(0.0, min(1.0, u - lo))
+        if lo == hi:
+            frame = loaded[lo].copy()
+        else:
+            frame = Image.blend(loaded[lo], loaded[hi], alpha).convert("RGBA")
         frame = _apply_camera_motion(frame, idx, total)
         draw = ImageDraw.Draw(frame, "RGBA")
 
@@ -1012,6 +1075,193 @@ def _render_lipsync_frames(frame_paths: List[Path], audio_path: Path, out_dir: P
         rendered.append(out_path)
 
     return rendered
+
+
+def merge_scene_clips(
+    clip_paths: List[Path],
+    output_path: Path,
+    min_duration_sec: float = 0.0,
+) -> bool:
+    """Concatenate WAV clips into one 16-kHz/mono/16-bit file and pad to min_duration_sec.
+
+    Uses ffmpeg so that clips produced by different backends (edge-tts, pyttsx3,
+    tone-fallback) are resampled to a consistent format before being joined.
+    This ensures SRT subtitle timing derived from individual clip durations stays
+    perfectly in sync with the merged audio.
+    """
+    valid: List[Path] = [p for p in clip_paths if p.exists() and p.stat().st_size > 1024]
+    if not valid:
+        return False
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    list_file: Optional[Path] = None
+    tmp_concat: Optional[Path] = None
+    try:
+        ffmpeg = _ffmpeg_exe()
+
+        # Write an ffmpeg concat list (safe=0 allows absolute paths).
+        list_file = output_path.with_suffix(".concat_list.txt")
+        list_file.write_text(
+            "\n".join(f"file '{str(p.resolve()).replace(chr(39), chr(39)+'\\'+chr(39)+chr(39))}'"
+                      for p in valid),
+            encoding="utf-8",
+        )
+
+        tmp_concat = output_path.with_suffix(".tmp_concat.wav")
+        cmd_concat = [
+            ffmpeg, "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(list_file),
+            "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
+            str(tmp_concat),
+        ]
+        proc = subprocess.run(cmd_concat, check=False, capture_output=True, text=True, timeout=120)
+        if proc.returncode != 0 or not tmp_concat.exists() or tmp_concat.stat().st_size < 256:
+            raise RuntimeError(f"ffmpeg concat failed: {(proc.stderr or proc.stdout or '').strip()[-400:]}")
+
+        # Pad with silence if concatenated audio is shorter than target duration.
+        if min_duration_sec > 0.0:
+            current_dur = _audio_duration_seconds(tmp_concat)
+            if current_dur < min_duration_sec:
+                pad_sec = min_duration_sec - current_dur
+                cmd_pad = [
+                    ffmpeg, "-y",
+                    "-i", str(tmp_concat),
+                    "-af", f"apad=pad_dur={pad_sec:.3f}",
+                    "-t", str(min_duration_sec),
+                    "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
+                    str(output_path),
+                ]
+                proc2 = subprocess.run(cmd_pad, check=False, capture_output=True, text=True, timeout=60)
+                if proc2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 256:
+                    return True
+                # Padding failed — use unpadded version as fallback.
+
+        shutil.copyfile(tmp_concat, output_path)
+        return output_path.exists() and output_path.stat().st_size > 256
+
+    except Exception:
+        return False
+    finally:
+        for tmp in (list_file, tmp_concat):
+            if tmp is not None:
+                try:
+                    tmp.unlink()
+                except Exception:
+                    pass
+
+
+def _format_srt_time(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int(round((seconds % 1) * 1000))
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def generate_srt_content(clips: List[Dict[str, Any]], start_offset: float = 0.0) -> str:
+    """Generate SRT subtitle text from a list of {character, line, audio_path} dicts.
+
+    Timing is derived from the actual WAV duration of each clip when the file
+    exists; otherwise falls back to a word-count estimate (~2.5 wps).
+    """
+    entries: List[str] = []
+    current_time = start_offset
+    index = 1
+
+    for clip in clips:
+        if not isinstance(clip, dict):
+            continue
+        character = str(clip.get("character", "")).strip()
+        line = str(clip.get("line", clip.get("text", ""))).strip()
+        if not line:
+            continue
+
+        # Derive duration from actual WAV file when available.
+        dur = 0.0
+        ap = clip.get("audio_path", "")
+        if ap:
+            p = Path(ap)
+            if p.exists() and p.suffix.lower() == ".wav":
+                try:
+                    with wave.open(str(p), "rb") as wf:
+                        dur = float(wf.getnframes()) / float(max(1, wf.getframerate()))
+                except Exception:
+                    pass
+
+        if dur <= 0.0:
+            # Estimate: ~2.5 words per second, minimum 1.5 s.
+            dur = max(1.5, len(line.split()) / 2.5)
+
+        start = current_time
+        end = current_time + dur
+
+        text = f"{character}: {line}" if character else line
+        # Soft-wrap long lines at ~65 chars for readability.
+        if len(text) > 65:
+            mid = len(text) // 2
+            split_at = text.rfind(" ", max(0, mid - 20), mid + 20)
+            if split_at > 0:
+                text = text[:split_at] + "\n" + text[split_at + 1:]
+
+        entries.append(f"{index}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{text}\n")
+        index += 1
+        current_time = end
+
+    return "\n".join(entries)
+
+
+def burn_subtitles_into_video(
+    video_path: Path,
+    srt_content: str,
+    output_path: Path,
+) -> bool:
+    """Burn SRT subtitles into a video file using the ffmpeg subtitles filter.
+
+    Returns True on success; output_path is not created on failure.
+    The SRT file is written as a sibling temp file and cleaned up automatically.
+    """
+    if not srt_content.strip() or not video_path.exists():
+        return False
+
+    srt_path = video_path.with_suffix(".tmp_subs.srt")
+    try:
+        # utf-8-sig (BOM) improves Windows ffmpeg compatibility with special chars.
+        srt_path.write_text(srt_content, encoding="utf-8-sig")
+
+        ffmpeg = _ffmpeg_exe()
+
+        # Windows: subtitles filter requires forward-slashes and escaped drive colon.
+        srt_str = str(srt_path.resolve()).replace("\\", "/")
+        # Only escape the drive-letter colon (e.g. C:/ → C\:/)
+        if len(srt_str) >= 2 and srt_str[1] == ":":
+            srt_str = srt_str[0] + "\\:" + srt_str[2:]
+
+        style = (
+            "FontName=Arial,FontSize=20,"
+            "PrimaryColour=&H00FFFFFF,"
+            "OutlineColour=&H00000000,"
+            "BackColour=&H80000000,"
+            "BorderStyle=4,Outline=1,Shadow=0,"
+            "Alignment=2,MarginV=24"
+        )
+        cmd = [
+            ffmpeg, "-y",
+            "-i", str(video_path),
+            "-vf", f"subtitles='{srt_str}':force_style='{style}'",
+            "-c:a", "copy",
+            str(output_path),
+        ]
+        proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)
+        return proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 2048
+    except Exception:
+        return False
+    finally:
+        try:
+            srt_path.unlink()
+        except Exception:
+            pass
 
 
 def compose_scene_video(scene_id: str, audio_path: Path, frame_sequence_dir: Path, output_path: Path, fps: int = 24) -> Tuple[bool, str]:

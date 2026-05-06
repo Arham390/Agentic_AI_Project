@@ -248,6 +248,7 @@ Tests cover all five phases:
 | `SD_LOCAL_MODEL` | `stabilityai/sd-turbo` | HuggingFace model ID |
 | `PHASE2_DEBUG_PLACEHOLDERS` | `0` | `1` = show debug overlays |
 | `PHASE2_SCENE_RETRIES` | `2` | Retry attempts per scene |
+| `PHASE2_FACE_SWAP_ENABLED` | `1` | `0` = skip face swap; use frames from `video_gen` directly |
 
 ---
 

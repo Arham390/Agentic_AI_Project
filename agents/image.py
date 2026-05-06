@@ -19,7 +19,7 @@ def _as_text(val: Any) -> str:
     return str(val).strip()
 
 
-def _extract_visual_fields(char: Dict[str, Any]) -> Tuple[str, str, str, str, str]:
+def _extract_visual_fields(char: Dict[str, Any]) -> Tuple[str, str, str, str, str, str]:
     """Map LLM / fallback shapes into strings for prompting."""
     name = _as_text(char.get("name")) or "Lead"
     appearance = _as_text(
@@ -33,12 +33,51 @@ def _extract_visual_fields(char: Dict[str, Any]) -> Tuple[str, str, str, str, st
         or char.get("traits")
     )
     reference_style = _as_text(char.get("reference_style"))
+    species = _as_text(char.get("species") or "human").lower() or "human"
     scenes_raw = char.get("scenes", [])
     if isinstance(scenes_raw, list):
         scene_hint = "; ".join(str(s) for s in scenes_raw[:4] if s)
     else:
         scene_hint = _as_text(scenes_raw)
-    return name, appearance, personality, reference_style, scene_hint
+    return name, appearance, personality, reference_style, scene_hint, species
+
+
+def _build_cartoon_animal_prompt(
+    name: str,
+    species: str,
+    appearance: str,
+    personality: str,
+    index: int,
+) -> str:
+    """Prompt for animated/cartoon animal characters (Tom, Jerry, etc.)."""
+    seed = int(hashlib.md5(f"{name}:{index}".encode("utf-8")).hexdigest(), 16)
+    styles = [
+        "classic 2D cartoon animation style",
+        "hand-drawn animated cartoon character",
+        "vibrant Saturday morning cartoon style",
+        "expressive Warner Bros cartoon style",
+    ]
+    parts: List[str] = [
+        f"cartoon {species} character",
+        f"character named {name}",
+        styles[seed % len(styles)],
+        "full body character design",
+        "expressive cartoon face and large eyes",
+        "colorful vibrant cartoon illustration",
+        "clean line art, flat color shading",
+        "NOT a human, NOT a person",
+        f"definitely a {species} animal",
+    ]
+    if appearance:
+        parts.append(f"appearance: {appearance}")
+    if personality:
+        parts.append(f"personality conveyed through pose: {personality}")
+    parts.extend([
+        "white background",
+        "character reference sheet",
+        "no text, no watermark, no logo",
+    ])
+    return ", ".join(parts)
 
 
 def _build_production_prompt(
@@ -48,9 +87,16 @@ def _build_production_prompt(
     reference_style: str,
     scene_hint: str,
     index: int,
+    species: str = "human",
 ) -> str:
-    """Rich, model-friendly prompt: one reference still per character."""
+    """Build an image generation prompt appropriate for the character's species."""
     seed = int(hashlib.md5(f"{name}:{index}".encode("utf-8")).hexdigest(), 16)
+
+    # Non-human characters get a cartoon/animation prompt — no cinematic photography terms.
+    if species and species.lower() not in ("human", ""):
+        return _build_cartoon_animal_prompt(name, species, appearance, personality, index)
+
+    # Human characters: cinematic portrait (original behaviour).
     framings = [
         "three-quarter portrait, shoulders up",
         "eye-level close portrait",
@@ -108,9 +154,10 @@ def image_agent(state):
     images = []
 
     for index, char in enumerate(characters, start=1):
-        name, appearance, personality, reference_style, scene_hint = _extract_visual_fields(char)
+        name, appearance, personality, reference_style, scene_hint, species = _extract_visual_fields(char)
         body = _build_production_prompt(
-            name, appearance, personality, reference_style, scene_hint, index
+            name, appearance, personality, reference_style, scene_hint, index,
+            species=species,
         )
         # Unique prefix so output filenames differ when prompts are long and similar
         prompt = f"[ref:{name.replace(' ', '_')}] {body}"
