@@ -17,7 +17,7 @@ def _try_llm_script(prompt: str) -> Tuple[Optional[str], Optional[Dict[str, str]
 
 Output rules (plain text only — no markdown, no **bold**, no code fences):
 - Scene headings like: Scene 1 - EXT. PARK - DAY  (or start lines with INT. / EXT.)
-- Action in parentheses: (Rain on the path.)
+- Action in parentheses: (Tom chases Jerry across the aisle.)
 - Dialogue: CHARACTER IN ALL CAPS: what they say
   You may use JESSICA (V.O.): for voice-over; keep (V.O.) before the colon.
 - Write AT LEAST 4 scenes.
@@ -25,6 +25,16 @@ Output rules (plain text only — no markdown, no **bold**, no code fences):
   Do NOT write scenes with only one line of dialogue; that is too short.
 - Use at least 2 named characters who interact with each other across scenes.
 - Each dialogue line should be 1-3 sentences so scenes last 15-20 seconds of speech.
+
+CRITICAL — Animal and non-human characters:
+- If the story has animal characters (cats, mice, dogs, birds, etc.), they MUST be written
+  as their actual animal species — NOT as humans.
+- Tom is a CAT. Jerry is a MOUSE. Never describe them as humans or give them human jobs.
+- Animal characters may speak (cartoon style) but their actions must reflect their animal nature
+  (Tom pounces, Jerry scurries, etc.).
+- In the action lines, always mention the character's species:
+  (Tom the orange tabby cat leaps over a suitcase.)
+  (Jerry the small grey mouse darts under a seat.)
 
 User idea:
 """

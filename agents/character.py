@@ -16,6 +16,62 @@ def extract_json(text):
     return "[]"
 
 
+# Well-known animated / fictional animal characters — name → species.
+_KNOWN_ANIMAL_CHARACTERS: Dict[str, str] = {
+    "tom": "cat",
+    "jerry": "mouse",
+    "garfield": "cat",
+    "tweety": "bird",
+    "sylvester": "cat",
+    "bugs bunny": "rabbit",
+    "bugs": "rabbit",
+    "daffy": "duck",
+    "donald": "duck",
+    "goofy": "dog",
+    "pluto": "dog",
+    "scooby": "dog",
+    "lassie": "dog",
+    "simba": "lion",
+    "dumbo": "elephant",
+    "bambi": "deer",
+    "thumper": "rabbit",
+    "pikachu": "electric mouse",
+    "toothless": "dragon",
+    "baloo": "bear",
+    "mowgli": "human",  # explicitly human so it's not mis-detected
+}
+
+# Animal keywords that may appear in character names or appearance descriptions.
+_ANIMAL_KEYWORDS: List[str] = [
+    "cat", "kitten", "mouse", "rat", "dog", "puppy", "rabbit", "bunny",
+    "bird", "duck", "goose", "bear", "lion", "tiger", "fox", "wolf",
+    "horse", "cow", "pig", "sheep", "elephant", "monkey", "ape",
+    "dragon", "dinosaur", "fish", "shark", "frog",
+]
+
+
+def _detect_species(name: str, appearance: str) -> str:
+    """Return the animal species string, or '' if the character is human."""
+    name_low = name.lower().strip()
+
+    # 1. Exact match in the known-animals table.
+    if name_low in _KNOWN_ANIMAL_CHARACTERS:
+        return _KNOWN_ANIMAL_CHARACTERS[name_low]
+
+    # 2. Partial match (e.g. "Tom Cat" contains "tom").
+    for known, species in _KNOWN_ANIMAL_CHARACTERS.items():
+        if known in name_low:
+            return species
+
+    # 3. Animal keyword in name or appearance.
+    combined = f"{name_low} {appearance.lower()}"
+    for keyword in _ANIMAL_KEYWORDS:
+        if keyword in combined:
+            return keyword
+
+    return ""
+
+
 def _fallback_characters(script: str) -> List[Dict[str, object]]:
     character_scenes: Dict[str, Set[str]] = {}
     current_scene = "Scene 1"
@@ -39,10 +95,12 @@ def _fallback_characters(script: str) -> List[Dict[str, object]]:
 
     characters: List[Dict[str, object]] = []
     for index, (name, scenes) in enumerate(sorted(character_scenes.items()), start=1):
+        species = _detect_species(name, "")
         characters.append(
             {
                 "id": f"char_{index:02d}",
                 "name": name,
+                "species": species or "human",
                 "personality": "Driven and expressive",
                 "appearance": "Derived from the screenplay context",
                 "reference_style": "cinematic portrait",
@@ -66,16 +124,20 @@ def _try_llm_characters(script: str) -> Tuple[Optional[List[Dict[str, object]]],
     prompt = f"""
     You are a Character Designer Agent.
 
-    From the script, extract all unique characters.
+    From the script, extract all unique characters and return ONLY a valid JSON list.
 
-    For each character:
-    - Assign a unique ID
-    - Extract personality traits
-    - Extract physical appearance
-    - Mention scenes they appear in
-    - voice_gender: exactly one of "male", "female", or "neutral" — which spoken voice fits this character in dialogue (infer from role and pronouns; use "neutral" only if truly ambiguous).
-
-    Return ONLY valid JSON list.
+    For each character include these fields:
+    - "id": unique string like "char_01"
+    - "name": character name as written
+    - "species": IMPORTANT — exactly one of: "human", "cat", "mouse", "dog", "rabbit",
+      "bird", "duck", "bear", "lion", "dragon", or another animal/creature name.
+      Use the character's nature/role — e.g. a cartoon cat named Tom = "cat",
+      a mouse named Jerry = "mouse", a pilot named Owais = "human".
+      Never default every character to "human" — identify animals as their actual species.
+    - "appearance": detailed physical description matching the species (fur color, size, etc.)
+    - "personality": personality traits
+    - "voice_gender": exactly one of "male", "female", or "neutral"
+    - "scenes": list of scene IDs they appear in
 
     Script:
     {script}
@@ -133,6 +195,19 @@ def character_agent(state):
         if vg not in ("male", "female", "neutral"):
             vg = "neutral"
         updated["voice_gender"] = vg
+
+        # Ensure species is always set; trust the LLM value but fall back to
+        # name/appearance detection so animal characters are never labelled "human".
+        llm_species = str(updated.get("species", "")).strip().lower()
+        if not llm_species or llm_species == "human":
+            appearance_text = str(updated.get("appearance", "")).lower()
+            detected = _detect_species(name, appearance_text)
+            if detected:
+                updated["species"] = detected
+            elif not llm_species:
+                updated["species"] = "human"
+        else:
+            updated["species"] = llm_species
 
         enriched.append(updated)
 
