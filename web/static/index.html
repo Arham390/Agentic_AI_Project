@@ -300,12 +300,14 @@ async function loadOutputs(){
 
     if(out.status==='fulfilled'){
       const o=out.value;
+      const bust=Date.now();
       // Audio
       const al=document.getElementById('audioList');
       al.innerHTML='';
       (o.audio_tracks||[]).forEach(f=>{
         const d=document.createElement('div');d.className='output-item';
-        d.innerHTML=`<div style="margin-bottom:6px"><a href="/api/file/audio_tracks/${f}" target="_blank">${f}</a></div><audio controls src="/api/file/audio_tracks/${f}"></audio>`;
+        const u=`/api/file/audio_tracks/${encodeURIComponent(f)}?v=${bust}`;
+        d.innerHTML=`<div style="margin-bottom:6px"><a href="${u}" target="_blank">${f}</a></div><audio controls preload="metadata" src="${u}"></audio>`;
         al.appendChild(d);
       });
       if(!o.audio_tracks?.length) al.innerHTML='<p style="color:var(--muted);font-size:.85rem">No audio tracks yet.</p>';
@@ -315,7 +317,8 @@ async function loadOutputs(){
       vl.innerHTML='';
       (o.raw_scenes||[]).filter(f=>f.endsWith('.mp4')).forEach(f=>{
         const d=document.createElement('div');d.className='output-item';
-        d.innerHTML=`<div style="margin-bottom:6px"><a href="/api/file/raw_scenes/${f}" target="_blank">${f}</a></div><video controls src="/api/file/raw_scenes/${f}"></video>`;
+        const u=`/api/file/raw_scenes/${encodeURIComponent(f)}?v=${bust}`;
+        d.innerHTML=`<div style="margin-bottom:6px"><a href="${u}" target="_blank">${f}</a></div><video controls preload="metadata" src="${u}"></video>`;
         vl.appendChild(d);
       });
       if(!o.raw_scenes?.filter(f=>f.endsWith('.mp4')).length) vl.innerHTML='<p style="color:var(--muted);font-size:.85rem">No scene videos yet.</p>';

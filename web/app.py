@@ -164,9 +164,14 @@ def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
 
         result = process_edit(query, current_state, _state_manager, scene_id=scene_id)
 
-        # Persist updated manifest back to disk so Outputs tab reflects changes
         edit_result = result.get("edit_result", {})
-        if isinstance(edit_result, dict):
+        if isinstance(edit_result, dict) and edit_result.get("status") not in ("error", "skipped"):
+            merged = {**current_state, **edit_result}
+            try:
+                persist_outputs(merged)
+                job["progress"].append("Synced outputs (script / characters / manifest) to disk")
+            except Exception as exc:
+                job["progress"].append(f"Warning: persist_outputs: {exc}")
             updated_manifest = edit_result.get("scene_manifest_data")
             if isinstance(updated_manifest, dict):
                 manifest_path.write_text(
@@ -290,7 +295,10 @@ async def serve_output_file(path: str):
         raise HTTPException(403, "Access denied")
     if not file_path.exists():
         raise HTTPException(404, f"Not found: {path}")
-    return FileResponse(str(file_path))
+    return FileResponse(
+        str(file_path),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 @app.get("/api/script")

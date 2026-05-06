@@ -18,6 +18,137 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from tools.llm_factory import describe_llm, get_chat_llm, llm_configured
 
+
+def _slug_asset(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", value).strip("_").lower()
+    return (slug[:48] or "asset")
+
+
+def hydrate_state_for_edit(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Fill missing pipeline fields from outputs/ so edits work without a perfect snapshot."""
+    s = dict(state)
+
+    man_path = _OUTPUTS_DIR / "scene_manifest.json"
+    m = s.get("scene_manifest_data")
+    if (not isinstance(m, dict) or not m.get("scenes")) and man_path.exists():
+        try:
+            s["scene_manifest_data"] = json.loads(man_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    if not str(s.get("script", "")).strip():
+        sp = _OUTPUTS_DIR / "script.txt"
+        if sp.exists():
+            try:
+                s["script"] = sp.read_text(encoding="utf-8")
+            except Exception:
+                pass
+
+    if not s.get("characters"):
+        ch_path = _OUTPUTS_DIR / "character_db.json"
+        if ch_path.exists():
+            try:
+                payload = json.loads(ch_path.read_text(encoding="utf-8"))
+                inner = payload.get("characters")
+                if isinstance(inner, list) and inner:
+                    s["characters"] = inner
+            except Exception:
+                pass
+
+    if not s.get("images"):
+        img_dir = _OUTPUTS_DIR / "image_assets"
+        images: List[Dict[str, Any]] = []
+        if img_dir.exists() and isinstance(s.get("characters"), list):
+            for c in s["characters"]:
+                if not isinstance(c, dict):
+                    continue
+                name = str(c.get("name", "")).strip()
+                if not name:
+                    continue
+                slug = _slug_asset(name)
+                found = ""
+                for ext in (".png", ".jpg", ".jpeg", ".webp"):
+                    for p in sorted(img_dir.glob(f"*{ext}")):
+                        low = p.name.lower()
+                        if slug in low or name.lower().replace(" ", "_") in low:
+                            found = str(p.resolve())
+                            break
+                    if found:
+                        break
+                if found:
+                    images.append({"character": name, "image_path": found})
+        if images:
+            s["images"] = images
+
+    return s
+
+
+def _llm_patch_scenes_for_instruction(
+    scenes_slice: List[Dict[str, Any]], instruction: str
+) -> Optional[List[Dict[str, Any]]]:
+    """Return updated scene dicts (same scene_ids) or None if LLM unavailable / parse fails."""
+    if not scenes_slice or not instruction.strip():
+        return None
+    if not llm_configured():
+        return None
+    llm = get_chat_llm(temperature=0.2)
+    if llm is None:
+        return None
+
+    payload = json.dumps(scenes_slice, indent=2, ensure_ascii=True)
+    prompt = (
+        "You are editing a film pipeline scene manifest. Apply the user's instruction to these scenes only.\n"
+        "Return ONLY a JSON array of scene objects. Each output object MUST keep the same scene_id as its input.\n"
+        "You may change heading, dialogues (array of {character, line}), actions, style. Preserve structure.\n"
+        "No markdown fences, no commentary.\n\n"
+        f"Instruction:\n{instruction}\n\nScenes JSON:\n{payload}"
+    )
+    try:
+        response = llm.invoke(prompt)
+        content = getattr(response, "content", "") or ""
+        if not isinstance(content, str):
+            return None
+        match = re.search(r"\[.*\]", content, re.DOTALL)
+        if not match:
+            return None
+        parsed = json.loads(match.group(0))
+        if not isinstance(parsed, list):
+            return None
+        by_id = {str(p.get("scene_id", "")).strip(): p for p in parsed if isinstance(p, dict) and p.get("scene_id")}
+        out: List[Dict[str, Any]] = []
+        for sc in scenes_slice:
+            if not isinstance(sc, dict):
+                continue
+            sid = str(sc.get("scene_id", "")).strip()
+            if sid and sid in by_id:
+                out.append(by_id[sid])
+            else:
+                out.append(sc)
+        return out if out else None
+    except Exception:
+        return None
+
+
+def _merge_scene_patch_into_manifest(
+    scene_manifest: Dict[str, Any], patched: List[Dict[str, Any]]
+) -> None:
+    scenes = scene_manifest.get("scenes")
+    if not isinstance(scenes, list) or not isinstance(patched, list):
+        return
+    by_id = {str(p.get("scene_id", "")).strip(): p for p in patched if isinstance(p, dict) and p.get("scene_id")}
+    for i, sc in enumerate(scenes):
+        if not isinstance(sc, dict):
+            continue
+        sid = str(sc.get("scene_id", "")).strip()
+        if sid in by_id:
+            p = by_id[sid]
+            merged = dict(sc)
+            for k in ("heading", "dialogues", "actions", "style"):
+                if k in p and p[k] is not None:
+                    merged[k] = p[k]
+            scenes[i] = merged
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Intent schema
 # ─────────────────────────────────────────────────────────────────────────────
@@ -244,6 +375,7 @@ def _execute_audio_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
         "scene_manifest_data": filtered_manifest,
         "audio_tracks": [],
         "llm_invocations": [],
+        "characters": state.get("characters") or [],
     }
     result = voice_synth_agent(base)
     partial_audio = result.get("audio_tracks", [])
@@ -292,6 +424,7 @@ def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> 
         "scene_manifest_data": filtered_manifest,
         "video_tracks": [],
         "images": state.get("images", []),
+        "characters": state.get("characters") or [],
         "llm_invocations": [],
     }
     result = video_gen_agent(base)
@@ -386,6 +519,14 @@ def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
     if not target_scenes:
         return {"scene_edit_applied": False, "error": f"No scenes matched scope: {scope}"}
 
+    if intent.get("intent") == "change_scene_dialogue":
+        raw_instr = str((intent.get("parameters") or {}).get("raw_query") or "").strip()
+        if raw_instr:
+            slice_copy = [dict(s) for s in target_scenes if isinstance(s, dict)]
+            patched = _llm_patch_scenes_for_instruction(slice_copy, raw_instr)
+            if patched:
+                _merge_scene_patch_into_manifest(scene_manifest, patched)
+
     # Persist updated manifest
     _write_manifest(scene_manifest)
 
@@ -395,6 +536,7 @@ def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
         "scene_manifest_data": audio_manifest,
         "audio_tracks": [],
         "llm_invocations": [],
+        "characters": state.get("characters") or [],
     })
 
     # Regenerate video for targeted scenes
@@ -402,6 +544,7 @@ def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[s
         "scene_manifest_data": audio_manifest,
         "video_tracks": [],
         "images": state.get("images", []),
+        "characters": state.get("characters") or [],
         "llm_invocations": [],
     })
 
@@ -464,8 +607,9 @@ def process_edit(
         }
 
     try:
-        edit_result = executor(intent, current_state)
-        merged = {**current_state, **edit_result}
+        hydrated = hydrate_state_for_edit(dict(current_state))
+        edit_result = executor(intent, hydrated)
+        merged = {**hydrated, **edit_result}
         description = f"Edit [{intent.get('intent', '?')}]: {query[:80]}"
         if scene_id:
             description += f" (scene: {scene_id})"
