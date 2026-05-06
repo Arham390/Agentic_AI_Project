@@ -25,9 +25,38 @@ def _slug_asset(value: str) -> str:
 
 
 def hydrate_state_for_edit(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Fill missing pipeline fields from outputs/ so edits work without a perfect snapshot."""
+    """Fill missing pipeline fields from outputs/ so edits work without a perfect snapshot.
+
+    Load order:
+    1. Start from the provided state dict.
+    2. Merge in the full pipeline_state.json saved after the last run (fills
+       audio_tracks, video_tracks, face_swaps, characters, images, etc.).
+    3. Patch individual files (manifest, script, character_db) on top.
+    """
     s = dict(state)
 
+    # ── 1. Load full saved pipeline state (survives server restarts) ──────────
+    saved_path = _OUTPUTS_DIR / "pipeline_state.json"
+    if saved_path.exists():
+        try:
+            saved = json.loads(saved_path.read_text(encoding="utf-8"))
+            for key in (
+                "audio_tracks", "video_tracks", "face_swaps", "raw_scenes",
+                "scene_tasks", "characters", "images", "script",
+                "scene_manifest_data",
+            ):
+                if not s.get(key):
+                    val = saved.get(key)
+                    if isinstance(val, list) and val:
+                        s[key] = val
+                    elif isinstance(val, dict) and val:
+                        s[key] = val
+                    elif isinstance(val, str) and val.strip():
+                        s[key] = val
+        except Exception:
+            pass
+
+    # ── 2. Individual file overrides (most authoritative for these fields) ────
     man_path = _OUTPUTS_DIR / "scene_manifest.json"
     m = s.get("scene_manifest_data")
     if (not isinstance(m, dict) or not m.get("scenes")) and man_path.exists():

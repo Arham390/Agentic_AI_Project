@@ -57,6 +57,15 @@ def _run_job(job_id: str, prompt: str, manual_script: str = "") -> None:
         job["progress"].append("Saving state snapshot…")
         version = _state_manager.snapshot(result, description=f"Initial run: {prompt[:80]}")
 
+        # Persist full pipeline state so edits can reconstruct it after restart.
+        try:
+            (OUTPUTS_DIR / "pipeline_state.json").write_text(
+                json.dumps(result, indent=2, default=str),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
         summary = {
             "script_path": str(paths["script"]),
             "character_db_path": str(paths["character_db"]),
@@ -141,7 +150,7 @@ def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
     try:
         job["progress"].append(f"Processing edit: {query}")
 
-        # Load full current state from latest snapshot (not just manifest)
+        # Load full current state — try in-memory snapshot first, then disk.
         current_state: Dict[str, Any] = {}
         history = _state_manager.history()
         if history:
@@ -151,7 +160,17 @@ def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
                 current_state = restored
                 job["progress"].append(f"Loaded state from snapshot v{latest_version}")
 
-        # Fallback: at minimum load manifest from disk
+        # Fallback: load full saved pipeline state from disk (survives restarts).
+        if not current_state:
+            saved_state_path = OUTPUTS_DIR / "pipeline_state.json"
+            if saved_state_path.exists():
+                try:
+                    current_state = json.loads(saved_state_path.read_text(encoding="utf-8"))
+                    job["progress"].append("Loaded state from saved pipeline_state.json")
+                except Exception as exc:
+                    job["progress"].append(f"Warning: could not load pipeline_state.json: {exc}")
+
+        # Ensure manifest is always present.
         manifest_path = OUTPUTS_DIR / "scene_manifest.json"
         if "scene_manifest_data" not in current_state and manifest_path.exists():
             current_state["scene_manifest_data"] = json.loads(
@@ -162,7 +181,10 @@ def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
         if scene_id:
             job["progress"].append(f"Targeting scene: {scene_id}")
 
+        job["progress"].append("Classifying edit intent…")
         result = process_edit(query, current_state, _state_manager, scene_id=scene_id)
+        intent_name = (result.get("intent") or {}).get("intent", "unknown")
+        job["progress"].append(f"Intent classified as: {intent_name}")
 
         edit_result = result.get("edit_result", {})
         if isinstance(edit_result, dict) and edit_result.get("status") not in ("error", "skipped"):
@@ -179,6 +201,14 @@ def _run_edit_job(job_id: str, query: str, scene_id: str = "") -> None:
                     encoding="utf-8",
                 )
                 job["progress"].append("Updated scene_manifest.json on disk")
+            # Keep pipeline_state.json current so future edits have full context.
+            try:
+                (OUTPUTS_DIR / "pipeline_state.json").write_text(
+                    json.dumps(merged, indent=2, default=str),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
 
         intent = result.get("intent", {})
         regen = edit_result.get("regenerated_scenes", [])

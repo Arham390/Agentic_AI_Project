@@ -20,7 +20,11 @@ Output rules (plain text only — no markdown, no **bold**, no code fences):
 - Action in parentheses: (Rain on the path.)
 - Dialogue: CHARACTER IN ALL CAPS: what they say
   You may use JESSICA (V.O.): for voice-over; keep (V.O.) before the colon.
-- At least two scenes when the idea supports it.
+- Write AT LEAST 4 scenes.
+- Each scene MUST have at least 3 dialogue exchanges — characters speaking back and forth.
+  Do NOT write scenes with only one line of dialogue; that is too short.
+- Use at least 2 named characters who interact with each other across scenes.
+- Each dialogue line should be 1-3 sentences so scenes last 15-20 seconds of speech.
 
 User idea:
 """

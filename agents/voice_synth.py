@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -92,7 +93,22 @@ def _scene_voice_payload(scene: Dict[str, Any], idx: int, voice_gender_by_charac
             }
         )
 
+    # Merge all per-line clips into a single scene audio file and pad to the
+    # minimum configured scene duration so that the final video is long enough.
     primary_audio = clips[0]["audio_path"] if clips else ""
+    try:
+        from tools.phase2_media import merge_scene_clips
+
+        min_dur = max(0.0, float(os.getenv("PHASE2_MIN_SCENE_DURATION_SEC", "0") or "0"))
+        clip_paths = [Path(c["audio_path"]) for c in clips if c.get("audio_path")]
+        if clip_paths:
+            merged_dir = Path(clip_paths[0]).parent
+            merged_path = merged_dir / f"{scene_id}_primary_merged.wav"
+            if merge_scene_clips(clip_paths, merged_path, min_duration_sec=min_dur):
+                primary_audio = str(merged_path.resolve())
+    except Exception:
+        pass  # Non-critical: fall back to first clip
+
     return {
         "scene_id": scene_id,
         "primary_audio": primary_audio,

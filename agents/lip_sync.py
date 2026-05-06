@@ -8,6 +8,22 @@ from typing import Any, Dict, List
 from tools.mcp_registry import invoke_tool
 
 
+def _subtitles_enabled() -> bool:
+    raw = os.getenv("PHASE2_SUBTITLES_ENABLED", "0")
+    return (raw or "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _clips_by_scene(audio_tracks: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Return scene_id -> list of clip dicts (character, line, audio_path)."""
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for entry in audio_tracks:
+        sid = str(entry.get("scene_id", "")).strip()
+        if not sid:
+            continue
+        out[sid] = list(entry.get("clips") or [])
+    return out
+
+
 def _primary_audio_by_scene(audio_tracks: List[Dict[str, Any]]) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for entry in audio_tracks:
@@ -208,8 +224,10 @@ def lip_sync_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         face_swaps = []
 
     audio_map = _primary_audio_by_scene(audio_tracks)
+    clips_map = _clips_by_scene(audio_tracks)
     frame_map = _frames_by_scene(video_tracks)
     swapped_map = _swapped_frames_by_scene(face_swaps)
+    burn_subs = _subtitles_enabled()
 
     outputs: List[Dict[str, Any]] = []
     retries = max(1, int(os.getenv("PHASE2_SCENE_RETRIES", "2")))
@@ -326,6 +344,25 @@ def lip_sync_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         best["attempt_logs"] = attempt_logs
+
+        # ── Subtitle burning (optional) ──────────────────────────────────────
+        if burn_subs and best.get("video_path"):
+            try:
+                from tools.phase2_media import generate_srt_content, burn_subtitles_into_video
+
+                scene_clips = clips_map.get(scene_id, [])
+                srt = generate_srt_content(scene_clips)
+                if srt.strip():
+                    vp = Path(best["video_path"])
+                    sub_out = vp.with_stem(vp.stem + "_sub") if hasattr(vp, "with_stem") else vp.with_name(vp.stem + "_sub" + vp.suffix)
+                    if burn_subtitles_into_video(vp, srt, sub_out):
+                        # Replace original with subtitle-burned version.
+                        import shutil as _shutil
+                        _shutil.move(str(sub_out), str(vp))
+                        best["subtitles"] = "burned"
+            except Exception:
+                pass  # Subtitles are non-critical; continue without them.
+
         if strict and not bool((best.get("quality") or {}).get("passed", False)):
             if allow_hitl_override:
                 q = best.get("quality") or {}
