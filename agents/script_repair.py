@@ -1,5 +1,7 @@
-from typing import Dict, List
+"""Phase 1 — Script Repair (LangChain LCEL chain rewrites the screenplay)."""
+from typing import List
 
+from tools.lc_chains import get_script_repair_chain
 from tools.llm_factory import describe_llm, get_chat_llm, llm_configured
 from tools.screenplay_format import strip_markdown_fences
 
@@ -26,55 +28,35 @@ def script_repair_agent(state):
         "(rewriting from validator feedback)...\n"
     )
 
-    if not llm_configured():
+    chain = get_script_repair_chain(temperature=0.25)
+    if chain is None:
         return {"script_repair_count": count, "llm_invocations": inv}
 
-    llm = get_chat_llm(temperature=0.25)
-    if llm is None:
-        return {"script_repair_count": count, "llm_invocations": inv}
-
-    meta = describe_llm(llm)
+    meta = describe_llm(get_chat_llm(temperature=0.25)) if llm_configured() else None
     issue_block = "\n".join(f"- {i}" for i in issues) if issues else "- (none listed)"
     hint_block = "\n".join(f"- {s}" for s in suggestions) if suggestions else "- (none listed)"
 
-    prompt = f"""Rewrite the screenplay below so it passes a strict structural checker.
-
-Required format (plain text only — no markdown, no **bold**, no ``` fences):
-1) Scene headings: e.g. "Scene 1 - EXT. PARK - DAY" or lines starting with INT. or EXT.
-2) Action lines in parentheses, e.g. (Rain falls on empty paths.)
-3) Dialogue lines: CHARACTER IN ALL CAPS: spoken text
-   Optional parenthetical before colon: JESSICA (V.O.): whispered line
-4) At least two scenes and multiple dialogue lines when it fits the story.
-
-Original creative brief (keep the same story and tone):
-{state.get("input_prompt", "")}
-
-Current script:
----
-{script}
----
-
-Reported problems:
-{issue_block}
-
-Suggested fixes:
-{hint_block}
-
-Return ONLY the full revised screenplay. No title line, no commentary."""
-
     try:
-        response = llm.invoke(prompt)
-        content = getattr(response, "content", "")
-        if isinstance(content, str):
-            fixed = strip_markdown_fences(content)
-            if fixed:
-                inv.append({"step": "script_repair", **meta})
-                return {
-                    "script": fixed,
-                    "script_repair_count": count,
-                    "llm_invocations": inv,
-                }
+        text = chain.invoke(
+            {
+                "prompt": state.get("input_prompt", ""),
+                "script": script,
+                "issues": issue_block,
+                "suggestions": hint_block,
+            }
+        )
     except Exception:
-        pass
+        return {"script_repair_count": count, "llm_invocations": inv}
+
+    if isinstance(text, str):
+        fixed = strip_markdown_fences(text)
+        if fixed:
+            if meta:
+                inv.append({"step": "script_repair", **meta})
+            return {
+                "script": fixed,
+                "script_repair_count": count,
+                "llm_invocations": inv,
+            }
 
     return {"script_repair_count": count, "llm_invocations": inv}

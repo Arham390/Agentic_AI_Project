@@ -1,74 +1,28 @@
-import json
-from typing import Dict, List, Optional, Tuple
+"""Phase 1 — Script Validator (rule-based + LangChain advisory)."""
+from typing import Dict, Optional, Tuple
 
+from tools.lc_chains import get_validator_chain
 from tools.llm_factory import describe_llm, get_chat_llm, llm_configured
 from tools.mcp_registry import invoke_tool
 from tools.screenplay_format import rule_validate_structure
 
 
-def _extract_json_object(text: str) -> str:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return text[start : end + 1]
-    return "{}"
-
-
-def _try_llm_validation(script: str) -> Tuple[Optional[Dict[str, object]], Optional[Dict[str, str]]]:
-    if not llm_configured():
+def _try_lc_validation(script: str) -> Tuple[Optional[Dict[str, object]], Optional[Dict[str, str]]]:
+    chain = get_validator_chain(temperature=0.0)
+    if chain is None:
         return None, None
-
-    llm = get_chat_llm(temperature=0)
-    if llm is None:
-        return None, None
-
-    meta = describe_llm(llm)
-    prompt = f"""
-    You are a Script Validator Agent (advisory only — another layer checks structure mechanically).
-
-    Review the script for:
-    - Scene headings (Scene N, INT., or EXT.)
-    - Dialogue with CHARACTER: or CHARACTER (V.O.): style
-    - Clear action lines in parentheses
-
-    Be lenient: minor stylistic choices are fine if the script is readable and filmable.
-    Set "valid" to true unless there are clear structural problems (no scenes, no dialogue, etc.).
-
-    Return ONLY valid JSON:
-    {{
-        "valid": true/false,
-        "issues": ["list of issues"],
-        "suggestions": ["list of fixes"]
-    }}
-
-    Script:
-    {script}
-    """
-
+    meta = describe_llm(get_chat_llm(temperature=0.0)) if llm_configured() else None
     try:
-        response = llm.invoke(prompt)
+        result = chain.invoke({"script": script})
     except Exception:
         return None, None
-
-    content = getattr(response, "content", "")
-    if not isinstance(content, str):
+    if result is None:
         return None, None
-
-    try:
-        result = json.loads(_extract_json_object(content))
-    except Exception:
-        return None, None
-
-    if not isinstance(result, dict):
-        return None, None
-
     return (
         {
-            "valid": bool(result.get("valid", False)),
-            "issues": result.get("issues", []) if isinstance(result.get("issues", []), list) else [],
-            "suggestions": result.get("suggestions", [])
-            if isinstance(result.get("suggestions", []), list)
-            else [],
+            "valid": bool(result.valid),
+            "issues": list(result.issues),
+            "suggestions": list(result.suggestions),
         },
         meta,
     )
@@ -78,7 +32,7 @@ def validator_agent(state):
     script = state.get("script", "")
     inv = list(state.get("llm_invocations") or [])
     rule_result = rule_validate_structure(script)
-    llm_result, llm_meta = _try_llm_validation(script)
+    llm_result, llm_meta = _try_lc_validation(script)
     if llm_meta:
         inv.append({"step": "validator", **llm_meta})
 
@@ -110,13 +64,7 @@ def validator_agent(state):
     try:
         invoke_tool(
             "commit_memory",
-            {
-                "data": {
-                    "agent": "validator",
-                    "validated": result["validated"],
-                    "report": report,
-                }
-            },
+            {"data": {"agent": "validator", "validated": result["validated"], "report": report}},
         )
     except Exception:
         pass

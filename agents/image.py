@@ -49,7 +49,11 @@ def _build_cartoon_animal_prompt(
     personality: str,
     index: int,
 ) -> str:
-    """Prompt for animated/cartoon animal characters (Tom, Jerry, etc.)."""
+    """Prompt for animated/cartoon animal characters (Tom, Jerry, etc.).
+
+    Pollinations + Flux respond well to leading-noun anchoring: putting the
+    species first, repeated, with strong "no human" negatives.
+    """
     seed = int(hashlib.md5(f"{name}:{index}".encode("utf-8")).hexdigest(), 16)
     styles = [
         "classic 2D cartoon animation style",
@@ -58,24 +62,25 @@ def _build_cartoon_animal_prompt(
         "expressive Warner Bros cartoon style",
     ]
     parts: List[str] = [
-        f"cartoon {species} character",
-        f"character named {name}",
+        # Anchor the species hard — this is the single biggest determinant.
+        f"a {species}, cartoon {species}, anthropomorphic {species} character",
+        f"the {species} is named {name}",
         styles[seed % len(styles)],
-        "full body character design",
-        "expressive cartoon face and large eyes",
-        "colorful vibrant cartoon illustration",
-        "clean line art, flat color shading",
-        "NOT a human, NOT a person",
-        f"definitely a {species} animal",
+        "full body four-legged animal character design",
+        f"distinct {species} body shape, snout, ears, fur, and tail",
+        "expressive cartoon face with large eyes",
+        "colorful vibrant cartoon illustration, clean line art, flat color shading",
+        # Strong negatives in-prompt — Flux follows these well.
+        "NOT a human, NO human face, NO person, NO human body, NO clothes on a human",
+        f"the subject is an animal — a {species} — never a man, woman, or child",
     ]
     if appearance:
-        parts.append(f"appearance: {appearance}")
+        parts.append(f"appearance details: {appearance}")
     if personality:
         parts.append(f"personality conveyed through pose: {personality}")
     parts.extend([
-        "white background",
-        "character reference sheet",
-        "no text, no watermark, no logo",
+        "white background, character reference sheet",
+        "no text, no watermark, no logo, no signature",
     ])
     return ", ".join(parts)
 

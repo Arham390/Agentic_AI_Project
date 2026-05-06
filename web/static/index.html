@@ -3,71 +3,427 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Agentic AI Film Pipeline</title>
+<title>Agentic AI Film Studio</title>
 <style>
-  :root{--bg:#0f1117;--panel:#1a1d27;--border:#2d3148;--accent:#6c63ff;--accent2:#ff6584;--text:#e2e8f0;--muted:#718096;--success:#48bb78;--warn:#ed8936;--err:#f56565}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-  header{background:var(--panel);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;gap:16px}
-  header h1{font-size:1.25rem;font-weight:700;letter-spacing:.5px}
-  header span{font-size:.78rem;color:var(--muted);background:#252839;padding:2px 8px;border-radius:4px}
-  nav{display:flex;gap:4px;margin-left:auto}
-  nav button{background:none;border:1px solid var(--border);color:var(--muted);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:.85rem;transition:.2s}
-  nav button.active,nav button:hover{background:var(--accent);border-color:var(--accent);color:#fff}
-  .tab{display:none;padding:28px;max-width:1100px;margin:0 auto}
-  .tab.active{display:block}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:20px}
-  .card h2{font-size:1rem;font-weight:600;margin-bottom:14px;color:var(--accent)}
-  label{font-size:.85rem;color:var(--muted);display:block;margin-bottom:6px}
-  textarea,input[type=text]{width:100%;background:#252839;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:.9rem;resize:vertical;outline:none;transition:.2s}
-  textarea:focus,input[type=text]:focus{border-color:var(--accent)}
-  textarea{min-height:90px}
-  .row{display:flex;gap:12px;flex-wrap:wrap}
-  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem;font-weight:600;transition:.2s}
-  .btn-primary{background:var(--accent);color:#fff}
-  .btn-primary:hover{opacity:.88}
-  .btn-secondary{background:#252839;border:1px solid var(--border);color:var(--text)}
-  .btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
-  .btn-danger{background:var(--err);color:#fff}
-  .btn-danger:hover{opacity:.88}
-  .btn:disabled{opacity:.45;cursor:not-allowed}
-  .progress-box{background:#252839;border:1px solid var(--border);border-radius:8px;padding:12px 16px;max-height:220px;overflow-y:auto;font-family:monospace;font-size:.8rem}
-  .progress-box p{padding:2px 0;color:var(--muted)}
-  .progress-box p.done{color:var(--success)}
-  .progress-box p.err{color:var(--err)}
-  .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:600}
-  .badge-ok{background:#1a3a2a;color:var(--success)}
-  .badge-warn{background:#3a2a1a;color:var(--warn)}
-  .badge-err{background:#3a1a1a;color:var(--err)}
-  .badge-run{background:#1a1a3a;color:#818cf8}
-  .output-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px}
-  .output-item{background:#252839;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:.8rem;word-break:break-all}
-  .output-item a{color:var(--accent);text-decoration:none}
-  .output-item a:hover{text-decoration:underline}
-  pre{background:#252839;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:.8rem;overflow-x:auto;max-height:320px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
-  .intent-box{background:#1a1a3a;border:1px solid #2d2d5a;border-radius:8px;padding:12px;font-size:.82rem;margin-top:12px}
-  .intent-box strong{color:var(--accent)}
-  .history-item{display:flex;align-items:center;gap:12px;padding:10px 14px;background:#252839;border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
-  .history-item .ver{font-weight:700;color:var(--accent);min-width:32px}
-  .history-item .desc{flex:1;font-size:.85rem}
-  .history-item .ts{font-size:.75rem;color:var(--muted)}
-  .split{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-  @media(max-width:700px){.split{grid-template-columns:1fr}}
-  video{width:100%;border-radius:8px;background:#000;margin-top:10px}
-  audio{width:100%;margin-top:8px}
-  .phase-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  :root {
+    --bg-0: #0b0d14;
+    --bg-1: #12141d;
+    --bg-2: #181b27;
+    --bg-3: #1f2331;
+    --border: #2a2f42;
+    --border-soft: #20243355;
+    --text: #e8ebf5;
+    --muted: #8b91a8;
+    --muted-soft: #5a6079;
+    --accent: #7c6cff;
+    --accent-2: #ff6584;
+    --accent-3: #4cd6c1;
+    --success: #4ade80;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.25);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(at 0% 0%, #1a1633 0%, transparent 50%),
+                radial-gradient(at 100% 0%, #0f2030 0%, transparent 45%),
+                var(--bg-0);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+    font-size: 14px;
+  }
+
+  /* ─── Header ─────────────────────────────────────────────────────────── */
+  header {
+    background: rgba(18, 20, 29, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: 0.3px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .status-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+  }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    padding: 7px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  nav button:hover { color: var(--text); background: var(--bg-3); }
+  nav button.active {
+    background: linear-gradient(135deg, rgba(124, 108, 255, 0.18), rgba(255, 101, 132, 0.12));
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  /* ─── Layout ────────────────────────────────────────────────────────── */
+  .tab { display: none; padding: 28px; max-width: 1280px; margin: 0 auto; }
+  .tab.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .card {
+    background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+  .card h2 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2::before {
+    content: '';
+    width: 3px; height: 14px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+    border-radius: 2px;
+  }
+
+  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  textarea, input[type=text], select {
+    width: 100%;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    font-size: 0.88rem;
+    font-family: inherit;
+    transition: all 0.15s;
+    resize: vertical;
+    outline: none;
+  }
+  textarea:focus, input[type=text]:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.15);
+  }
+  textarea { min-height: 96px; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ─── Buttons ───────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-size: 0.86rem;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #6354e6);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(124, 108, 255, 0.3);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(124, 108, 255, 0.4);
+  }
+  .btn-secondary {
+    background: var(--bg-3);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+  .btn-danger { background: var(--err); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 0.78rem; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ─── Badges & status ───────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .badge-ok    { background: rgba(74, 222, 128, 0.15); color: var(--success); }
+  .badge-warn  { background: rgba(251, 191, 36, 0.15); color: var(--warn); }
+  .badge-err   { background: rgba(248, 113, 113, 0.15); color: var(--err); }
+  .badge-info  { background: rgba(124, 108, 255, 0.15); color: var(--accent); }
+  .badge-run   { background: rgba(76, 214, 193, 0.15); color: var(--accent-3); }
+  .badge-run::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-3); animation: pulse 1s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ─── Progress log ──────────────────────────────────────────────────── */
+  .progress-box {
+    background: var(--bg-0);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    max-height: 260px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.78rem;
+    line-height: 1.7;
+  }
+  .progress-box p { color: var(--muted); }
+  .progress-box p.done { color: var(--success); }
+  .progress-box p.err { color: var(--err); }
+  .progress-box p::before { content: '▸ '; color: var(--muted-soft); }
+
+  /* ─── Phase stepper ─────────────────────────────────────────────────── */
+  .stepper {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 18px;
+    background: var(--bg-3); padding: 14px;
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+  }
+  .step {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    font-size: 0.72rem; color: var(--muted-soft); position: relative;
+  }
+  .step .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted-soft);
+    border: 2px solid var(--bg-3);
+    box-shadow: 0 0 0 1px var(--muted-soft);
+  }
+  .step.active .dot { background: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 12px var(--accent); }
+  .step.done .dot { background: var(--success); box-shadow: 0 0 0 1px var(--success); }
+  .step.active { color: var(--text); font-weight: 600; }
+  .step.done { color: var(--success); }
+  .step:not(:last-child)::after {
+    content: ''; position: absolute; top: 4px; left: 60%; right: -40%; height: 2px;
+    background: var(--border);
+  }
+  .step.done:not(:last-child)::after { background: var(--success); }
+
+  /* ─── Scene cards ───────────────────────────────────────────────────── */
+  .scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px; }
+  .scene-card {
+    background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+  }
+  .scene-card .scene-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(124, 108, 255, 0.04);
+  }
+  .scene-card .scene-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    background: rgba(124, 108, 255, 0.12);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .scene-card .scene-heading {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 4px;
+    word-break: break-word;
+  }
+  .scene-card .media { padding: 12px; }
+  .scene-card video {
+    width: 100%; aspect-ratio: 16/9; background: #000;
+    border-radius: var(--radius-sm); object-fit: cover;
+  }
+  .scene-card audio { width: 100%; margin-top: 8px; }
+  .scene-card .dialogues {
+    padding: 10px 16px 14px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border-soft);
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .scene-card .dialogue-line {
+    margin: 4px 0;
+    padding-left: 8px;
+    border-left: 2px solid var(--border);
+  }
+  .scene-card .dialogue-line .char {
+    color: var(--accent-3);
+    font-weight: 600;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+  }
+  .scene-card .actions {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-soft);
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+
+  /* ─── Edit chat ─────────────────────────────────────────────────────── */
+  .chat-thread {
+    background: var(--bg-0);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    max-height: 360px;
+    overflow-y: auto;
+    margin-bottom: 14px;
+  }
+  .chat-msg { margin-bottom: 10px; padding: 10px 14px; border-radius: 10px; font-size: 0.85rem; max-width: 90%; }
+  .chat-msg.user { background: rgba(124, 108, 255, 0.12); border: 1px solid rgba(124, 108, 255, 0.25); margin-left: auto; }
+  .chat-msg.agent { background: var(--bg-2); border: 1px solid var(--border); }
+  .chat-msg .meta { font-size: 0.7rem; color: var(--muted); margin-bottom: 4px; }
+  .chat-msg .intent {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.74rem;
+    background: var(--bg-3); padding: 8px 12px; border-radius: 6px; margin-top: 8px;
+    overflow-x: auto;
+  }
+  .chat-msg .regen { color: var(--success); font-weight: 600; margin-top: 6px; font-size: 0.78rem; }
+  .chat-empty { text-align: center; color: var(--muted-soft); padding: 30px; font-size: 0.85rem; }
+
+  .examples {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .examples .btn { font-size: 0.78rem; padding: 6px 12px; }
+
+  /* ─── History timeline ──────────────────────────────────────────────── */
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px;
+    width: 2px; background: var(--border);
+  }
+  .timeline-item {
+    position: relative;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    margin-bottom: 12px;
+  }
+  .timeline-item::before {
+    content: ''; position: absolute; left: -25px; top: 16px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 0 3px var(--bg-0);
+  }
+  .timeline-item.current::before { background: var(--success); box-shadow: 0 0 0 3px var(--bg-0), 0 0 12px var(--success); }
+  .timeline-item .ver { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-weight: 700; }
+  .timeline-item .desc { color: var(--text); margin: 4px 0; font-size: 0.85rem; }
+  .timeline-item .meta {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    font-size: 0.72rem; color: var(--muted); margin-top: 6px;
+  }
+  .timeline-item .ts { color: var(--muted-soft); }
+  .timeline-item .actions { margin-top: 10px; display: flex; gap: 6px; }
+
+  /* ─── Misc ──────────────────────────────────────────────────────────── */
+  .empty {
+    text-align: center; padding: 40px 20px; color: var(--muted-soft);
+    font-size: 0.9rem;
+  }
+  .empty .icon { font-size: 2rem; margin-bottom: 10px; opacity: 0.5; }
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px; margin-top: 10px;
+  }
+  .stat {
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+  }
+  .stat .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .stat .value { font-size: 1.4rem; font-weight: 700; color: var(--text); margin-top: 2px; }
+  .stat .value.accent { color: var(--accent); }
+
+  pre {
+    background: var(--bg-0);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    overflow-x: auto;
+    max-height: 360px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted-soft); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🎬 Agentic AI Film Pipeline</h1>
-  <span>Phase 1–5 Demo</span>
+  <div class="brand">
+    <div class="brand-mark">🎬</div>
+    <div>Agentic AI Film Studio</div>
+  </div>
+  <span class="status-pill"><span class="dot"></span><span id="apiStatus">Online</span></span>
+  <span class="status-pill" id="backendStatus" style="display:none"></span>
   <nav>
-    <button class="active" onclick="showTab('generate')">Generate</button>
-    <button onclick="showTab('outputs')">Outputs</button>
-    <button onclick="showTab('edit')">Edit (Phase 5)</button>
-    <button onclick="showTab('history')">Version History</button>
+    <button class="active" data-tab="generate">Generate</button>
+    <button data-tab="studio">Studio</button>
+    <button data-tab="edit">Edit Agent</button>
+    <button data-tab="history">History</button>
   </nav>
 </header>
 
@@ -75,67 +431,66 @@
 <div class="tab active" id="tab-generate">
 
   <div class="card">
-    <h2>▶ Generate Short Film</h2>
-    <label>Prompt (natural language story idea)</label>
+    <h2>Prompt</h2>
+    <label>Story idea (natural language)</label>
     <textarea id="prompt" placeholder="A young astronaut discovers a hidden ocean on Mars and must decide whether to reveal it…"></textarea>
-    <br/>
-    <label style="margin-top:10px">Or provide a manual script (optional — overrides prompt)</label>
-    <textarea id="manual_script" rows="3" placeholder="Scene 1 - EXT. MARS SURFACE - DAY&#10;ALEX: What is that beneath the ice?"></textarea>
-    <br/>
-    <div class="row" style="margin-top:14px">
-      <button class="btn btn-primary" id="runBtn" onclick="runPipeline()">🚀 Run Full Pipeline</button>
-      <button class="btn btn-secondary" onclick="loadOutputs()">🔄 Refresh Outputs</button>
+    <div style="margin-top: 14px;">
+      <label>Or paste a manual screenplay (overrides prompt)</label>
+      <textarea id="manual_script" rows="3" placeholder="Scene 1 - EXT. MARS SURFACE - DAY&#10;ALEX: What is that beneath the ice?"></textarea>
+    </div>
+    <div class="row" style="margin-top: 18px;">
+      <button class="btn btn-primary" id="runBtn" onclick="runPipeline()">▶ Run Full Pipeline</button>
+      <button class="btn btn-ghost" onclick="loadOutputs()">↻ Refresh</button>
     </div>
   </div>
 
-  <div class="card" id="progressCard" style="display:none">
+  <div class="card" id="progressCard" style="display: none;">
     <h2>Pipeline Progress</h2>
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-      <span id="jobStatus" class="badge badge-run">RUNNING</span>
-      <span id="jobId" style="font-size:.75rem;color:var(--muted)"></span>
+    <div class="stepper" id="stepper">
+      <div class="step" data-step="script"><span class="dot"></span>Script</div>
+      <div class="step" data-step="characters"><span class="dot"></span>Characters</div>
+      <div class="step" data-step="images"><span class="dot"></span>Images</div>
+      <div class="step" data-step="audio"><span class="dot"></span>Audio</div>
+      <div class="step" data-step="video"><span class="dot"></span>Video</div>
+      <div class="step" data-step="compose"><span class="dot"></span>Compose</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+      <span id="jobStatus" class="badge badge-run">Running</span>
+      <span id="jobId" style="font-size: 0.72rem; color: var(--muted-soft); font-family: 'JetBrains Mono', monospace;"></span>
     </div>
     <div class="progress-box" id="progressLog"></div>
   </div>
 
-  <div class="card" id="resultCard" style="display:none">
-    <h2>Pipeline Result</h2>
-    <div id="resultSummary"></div>
-    <div class="phase-btns">
-      <button class="btn btn-secondary" onclick="rerunPhase('voice_synth')">🔊 Re-run Audio</button>
-      <button class="btn btn-secondary" onclick="rerunPhase('video_gen')">🎞 Re-run Video</button>
-      <button class="btn btn-secondary" onclick="showTab('outputs')">📂 View Outputs</button>
+  <div class="card" id="resultCard" style="display: none;">
+    <h2>Result</h2>
+    <div id="resultSummary" class="summary-grid"></div>
+    <div class="row" style="margin-top: 16px;">
+      <button class="btn btn-secondary btn-sm" onclick="showTab('studio')">📂 Open Studio</button>
+      <button class="btn btn-secondary btn-sm" onclick="rerunPhase('voice_synth')">🔊 Re-run Audio</button>
+      <button class="btn btn-secondary btn-sm" onclick="rerunPhase('video_gen')">🎞 Re-run Video</button>
     </div>
   </div>
 
 </div>
 
-<!-- ── TAB: OUTPUTS ──────────────────────────────────────────────────────── -->
-<div class="tab" id="tab-outputs">
+<!-- ── TAB: STUDIO ───────────────────────────────────────────────────────── -->
+<div class="tab" id="tab-studio">
 
-  <div class="split">
-    <div>
-      <div class="card">
-        <h2>📝 Script</h2>
-        <pre id="scriptPre">Loading…</pre>
-      </div>
-      <div class="card">
-        <h2>👤 Characters</h2>
-        <pre id="charPre">Loading…</pre>
-      </div>
+  <div class="grid-2">
+    <div class="card">
+      <h2>Screenplay</h2>
+      <pre id="scriptPre">Loading…</pre>
     </div>
-    <div>
-      <div class="card">
-        <h2>🎬 Scene Manifest</h2>
-        <pre id="scenePre">Loading…</pre>
-      </div>
-      <div class="card">
-        <h2>🔊 Audio Tracks</h2>
-        <div class="output-list" id="audioList"></div>
-      </div>
-      <div class="card">
-        <h2>🎥 Scene Videos</h2>
-        <div class="output-list" id="videoList"></div>
-      </div>
+    <div class="card">
+      <h2>Cast</h2>
+      <div id="castList"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Scenes</h2>
+    <div class="scene-grid" id="sceneGrid">
+      <div class="empty"><div class="icon">🎞</div>No scenes yet — run the pipeline to populate.</div>
     </div>
   </div>
 
@@ -145,47 +500,47 @@
 <div class="tab" id="tab-edit">
 
   <div class="card">
-    <h2>✏️ Intelligent Edit Agent (Phase 5)</h2>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">
-      Describe your edit in plain language. Select a specific scene to target, or leave "All Scenes" to apply globally.
-      The agent classifies intent, executes the targeted change, and saves a snapshot so you can undo.
+    <h2>Edit Agent <span class="badge badge-info" style="margin-left: 6px;">LangChain + LangGraph</span></h2>
+    <p style="color: var(--muted); font-size: 0.85rem; margin-bottom: 16px;">
+      Describe edits in plain language. The agent classifies your intent, scopes to a scene if needed,
+      executes the change (regenerating audio/frames/MP4 as required), and saves a snapshot for undo.
     </p>
-    <div class="row" style="margin-bottom:12px">
-      <div style="flex:1">
+
+    <div class="row" style="margin-bottom: 12px;">
+      <div style="flex: 1; min-width: 200px;">
         <label>Target Scene</label>
-        <select id="sceneSelector" style="width:100%;background:#252839;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:.9rem;outline:none">
-          <option value="">All Scenes</option>
-        </select>
+        <select id="sceneSelector"><option value="">All scenes</option></select>
       </div>
-      <div style="flex:0 0 auto;align-self:flex-end">
-        <button class="btn btn-secondary" onclick="loadSceneSelector()" style="font-size:.8rem">🔄 Refresh</button>
+      <div style="display: flex; align-items: end;">
+        <button class="btn btn-ghost btn-sm" onclick="loadSceneSelector()">↻</button>
       </div>
     </div>
+
     <label>Edit instruction</label>
-    <input type="text" id="editQuery" placeholder='e.g. "Make the scene darker", "Change voice tone to dramatic", "Regenerate the script"' style="margin-bottom:12px"/>
-    <div class="row">
-      <button class="btn btn-primary" onclick="sendEdit()">✅ Apply Edit</button>
-    </div>
-    <div id="editProgress" style="margin-top:14px;display:none">
-      <div class="progress-box" id="editLog"></div>
-    </div>
-    <div class="intent-box" id="intentBox" style="display:none">
-      <strong>Detected Intent</strong>
-      <pre id="intentPre" style="border:none;background:none;padding:6px 0;font-size:.82rem"></pre>
-      <div id="regenInfo" style="display:none;margin-top:8px;font-size:.82rem;color:var(--success)"></div>
+    <input type="text" id="editQuery" placeholder='e.g. "Make the scene darker" · "Make Tom say I\'ll catch you, mouse" · "Speed up scene 2"' onkeydown="if(event.key==='Enter') sendEdit()"/>
+    <div class="row" style="margin-top: 14px;">
+      <button class="btn btn-primary" id="editBtn" onclick="sendEdit()">▸ Apply Edit</button>
     </div>
   </div>
 
   <div class="card">
-    <h2>💡 Example Edit Commands</h2>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Make the scene darker')">🌑 Make scene darker</button>
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Change voice tone to dramatic')">🎭 Dramatic voice</button>
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Add background music to all scenes')">🎵 Add music</button>
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Regenerate the script with more drama')">📝 New script</button>
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Change character design to sci-fi aesthetic')">🤖 Sci-fi look</button>
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Speed up the pacing of the scenes')">⚡ Speed up</button>
-      <button class="btn btn-secondary" style="font-size:.8rem" onclick="setEdit('Change the dialogue tone')">💬 Edit dialogue</button>
+    <h2>Conversation</h2>
+    <div class="chat-thread" id="chatThread">
+      <div class="chat-empty">No edits yet — apply your first edit to start the conversation.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Quick Examples</h2>
+    <div class="examples">
+      <button class="btn btn-secondary" onclick="setEdit('Make the scene darker and moodier')">🌑 Make darker</button>
+      <button class="btn btn-secondary" onclick="setEdit('Change voice tone to dramatic')">🎭 Dramatic voice</button>
+      <button class="btn btn-secondary" onclick="setEdit('Add background music to all scenes')">🎵 Add music</button>
+      <button class="btn btn-secondary" onclick="setEdit('Change character design to sci-fi cyberpunk aesthetic')">🤖 Sci-fi style</button>
+      <button class="btn btn-secondary" onclick="setEdit('Speed up the pacing of the scenes')">⚡ Speed up</button>
+      <button class="btn btn-secondary" onclick="setEdit('Make the lead character say something more emotional')">💬 Edit dialogue</button>
+      <button class="btn btn-secondary" onclick="setEdit('Regenerate the script with a more dramatic ending')">📝 New script</button>
+      <button class="btn btn-secondary" onclick="setEdit('Apply a warm golden hour color grade')">🌅 Warm grade</button>
     </div>
   </div>
 
@@ -195,250 +550,430 @@
 <div class="tab" id="tab-history">
 
   <div class="card">
-    <h2>🕑 Version History (State Snapshots)</h2>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">Every pipeline run and edit creates a versioned snapshot. Click Revert to restore any previous state.</p>
-    <button class="btn btn-secondary" onclick="loadHistory()">🔄 Refresh</button>
-    <div id="historyList" style="margin-top:16px"></div>
+    <h2>Version History</h2>
+    <p style="color: var(--muted); font-size: 0.85rem; margin-bottom: 16px;">
+      Every pipeline run and edit creates a versioned snapshot. Click <em>Revert</em> to restore any prior state.
+    </p>
+    <button class="btn btn-ghost btn-sm" onclick="loadHistory()">↻ Refresh</button>
+    <div id="historyList" class="timeline" style="margin-top: 16px;"></div>
   </div>
 
 </div>
 
 <script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State + Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 const API = '';
+const CHAT_STORE_KEY = 'agentic_chat_v1';
+let chatHistory = JSON.parse(localStorage.getItem(CHAT_STORE_KEY) || '[]');
 
-// ── Tab switching ──────────────────────────────────────────────────────────
-function showTab(name){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
-  document.querySelectorAll('nav button')[['generate','outputs','edit','history'].indexOf(name)].classList.add('active');
-  if(name==='outputs') loadOutputs();
-  if(name==='history') loadHistory();
-  if(name==='edit') loadSceneSelector();
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`nav button[data-tab="${name}"]`).classList.add('active');
+
+  if (name === 'studio')   { loadStudio(); }
+  if (name === 'history')  { loadHistory(); }
+  if (name === 'edit')     { loadSceneSelector(); renderChat(); }
+}
+document.querySelectorAll('nav button').forEach(b => {
+  b.addEventListener('click', () => showTab(b.dataset.tab));
+});
+
+function bust() { return Date.now(); }
+
+function setStatus(level, text) {
+  const el = document.getElementById('apiStatus');
+  el.textContent = text;
 }
 
-// ── Pipeline run ───────────────────────────────────────────────────────────
-async function runPipeline(){
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase stepper (heuristic — drives the visual progress)
+// ─────────────────────────────────────────────────────────────────────────────
+const STEP_KEYWORDS = {
+  script:     [/script/i, /screenplay/i, /scriptwriter/i, /validator/i],
+  characters: [/character/i, /cast/i, /roster/i],
+  images:     [/image/i, /portrait/i, /poster/i, /art/i],
+  audio:      [/voice/i, /audio/i, /tts/i, /speech/i],
+  video:      [/video/i, /frame/i, /scene render/i, /motion/i],
+  compose:    [/compos/i, /lip.sync/i, /face.swap/i, /mp4/i, /persisting/i, /snapshot/i],
+};
+function tickStepperFromMessage(msg) {
+  for (const [step, regs] of Object.entries(STEP_KEYWORDS)) {
+    if (regs.some(r => r.test(msg))) {
+      activateStep(step);
+      return;
+    }
+  }
+}
+function activateStep(step) {
+  const all = ['script','characters','images','audio','video','compose'];
+  const idx = all.indexOf(step);
+  if (idx === -1) return;
+  for (let i = 0; i < all.length; i++) {
+    const el = document.querySelector(`.step[data-step="${all[i]}"]`);
+    if (!el) continue;
+    el.classList.remove('active','done');
+    if (i < idx) el.classList.add('done');
+    else if (i === idx) el.classList.add('active');
+  }
+}
+function completeStepper() {
+  document.querySelectorAll('.step').forEach(el => {
+    el.classList.remove('active');
+    el.classList.add('done');
+  });
+}
+function resetStepper() {
+  document.querySelectorAll('.step').forEach(el => el.classList.remove('active','done'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline run
+// ─────────────────────────────────────────────────────────────────────────────
+async function runPipeline() {
   const prompt = document.getElementById('prompt').value.trim();
   const manual = document.getElementById('manual_script').value.trim();
-  if(!prompt && !manual){alert('Enter a prompt or manual script.');return;}
+  if (!prompt && !manual) { alert('Enter a prompt or manual script.'); return; }
 
-  document.getElementById('runBtn').disabled=true;
-  document.getElementById('progressCard').style.display='block';
-  document.getElementById('resultCard').style.display='none';
-  const log = document.getElementById('progressLog');
-  log.innerHTML='';
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('progressCard').style.display = 'block';
+  document.getElementById('resultCard').style.display = 'none';
+  resetStepper();
+  const log = document.getElementById('progressLog'); log.innerHTML = '';
 
-  const res = await fetch(API+'/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,manual_script:manual})});
-  const {job_id} = await res.json();
-  document.getElementById('jobId').textContent = 'Job: '+job_id;
-
-  const es = new EventSource(API+'/api/status/'+job_id);
-  es.onmessage = e=>{
-    const data = JSON.parse(e.data);
-    if(data.type==='progress'){
-      const p=document.createElement('p');
-      p.textContent='› '+data.message;
-      log.appendChild(p);
-      log.scrollTop=log.scrollHeight;
-    }
-    if(data.type==='status'){
-      const badge = document.getElementById('jobStatus');
-      if(data.status==='completed'){
-        badge.className='badge badge-ok';badge.textContent='COMPLETED';
-        document.getElementById('runBtn').disabled=false;
-        showResult(data.result);
-        es.close();
-      } else if(data.status==='failed'){
-        badge.className='badge badge-err';badge.textContent='FAILED';
-        document.getElementById('runBtn').disabled=false;
-        const p=document.createElement('p');p.className='err';
-        p.textContent='✗ '+data.error;log.appendChild(p);
-        es.close();
-      } else {
-        badge.className='badge badge-run';badge.textContent='RUNNING';
-      }
-    }
-  };
-}
-
-function showResult(r){
-  if(!r) return;
-  document.getElementById('resultCard').style.display='block';
-  document.getElementById('resultSummary').innerHTML=`
-    <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:.85rem">
-      <span class="badge badge-ok">Mode: ${r.mode||'?'}</span>
-      <span class="badge ${r.validated?'badge-ok':'badge-warn'}">Validated: ${r.validated}</span>
-      <span class="badge badge-run">Characters: ${r.character_count||0}</span>
-      <span class="badge badge-run">Scenes: ${r.raw_scene_count||0}</span>
-      <span class="badge badge-run">Audio: ${r.audio_track_count||0}</span>
-      <span class="badge badge-run">Video: ${r.video_track_count||0}</span>
-      ${r.version?`<span class="badge badge-ok">Snapshot v${r.version}</span>`:''}
-    </div>`;
-}
-
-// ── Phase re-run ───────────────────────────────────────────────────────────
-async function rerunPhase(phase){
-  const res = await fetch(API+'/api/phase/'+phase,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
-  const {job_id} = await res.json();
-  alert(`Phase '${phase}' re-run started. Job: ${job_id}`);
-}
-
-// ── Outputs tab ────────────────────────────────────────────────────────────
-async function loadOutputs(){
-  try{
-    const [out,script,chars,scenes] = await Promise.allSettled([
-      fetch(API+'/api/outputs').then(r=>r.json()),
-      fetch(API+'/api/script').then(r=>r.json()).catch(()=>({script:'Not generated yet.'})),
-      fetch(API+'/api/characters').then(r=>r.json()).catch(()=>({})),
-      fetch(API+'/api/scenes').then(r=>r.json()).catch(()=>({})),
-    ]);
-
-    if(script.status==='fulfilled') document.getElementById('scriptPre').textContent=script.value.script||'—';
-    if(chars.status==='fulfilled') document.getElementById('charPre').textContent=JSON.stringify(chars.value,null,2);
-    if(scenes.status==='fulfilled') document.getElementById('scenePre').textContent=JSON.stringify(scenes.value,null,2);
-
-    if(out.status==='fulfilled'){
-      const o=out.value;
-      const bust=Date.now();
-      // Audio
-      const al=document.getElementById('audioList');
-      al.innerHTML='';
-      (o.audio_tracks||[]).forEach(f=>{
-        const d=document.createElement('div');d.className='output-item';
-        const u=`/api/file/audio_tracks/${encodeURIComponent(f)}?v=${bust}`;
-        d.innerHTML=`<div style="margin-bottom:6px"><a href="${u}" target="_blank">${f}</a></div><audio controls preload="metadata" src="${u}"></audio>`;
-        al.appendChild(d);
-      });
-      if(!o.audio_tracks?.length) al.innerHTML='<p style="color:var(--muted);font-size:.85rem">No audio tracks yet.</p>';
-
-      // Video
-      const vl=document.getElementById('videoList');
-      vl.innerHTML='';
-      (o.raw_scenes||[]).filter(f=>f.endsWith('.mp4')).forEach(f=>{
-        const d=document.createElement('div');d.className='output-item';
-        const u=`/api/file/raw_scenes/${encodeURIComponent(f)}?v=${bust}`;
-        d.innerHTML=`<div style="margin-bottom:6px"><a href="${u}" target="_blank">${f}</a></div><video controls preload="metadata" src="${u}"></video>`;
-        vl.appendChild(d);
-      });
-      if(!o.raw_scenes?.filter(f=>f.endsWith('.mp4')).length) vl.innerHTML='<p style="color:var(--muted);font-size:.85rem">No scene videos yet.</p>';
-    }
-  }catch(e){console.error(e);}
-}
-
-// ── Edit agent ─────────────────────────────────────────────────────────────
-function setEdit(q){document.getElementById('editQuery').value=q;}
-
-async function loadSceneSelector(){
-  const sel=document.getElementById('sceneSelector');
-  sel.innerHTML='<option value="">All Scenes</option>';
-  try{
-    const res=await fetch(API+'/api/scenes');
-    const data=await res.json();
-    const scenes=data.scenes||[];
-    scenes.forEach(s=>{
-      const opt=document.createElement('option');
-      opt.value=s.scene_id||'';
-      opt.textContent=`${s.scene_id} — ${(s.heading||'Untitled').substring(0,60)}`;
-      sel.appendChild(opt);
+  try {
+    const res = await fetch(API + '/api/run', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt, manual_script: manual}),
     });
-  }catch(e){/* scenes not generated yet */}
-}
-
-async function sendEdit(){
-  const query=document.getElementById('editQuery').value.trim();
-  if(!query){alert('Enter an edit instruction.');return;}
-  const sceneId=document.getElementById('sceneSelector').value;
-
-  document.getElementById('editProgress').style.display='block';
-  document.getElementById('intentBox').style.display='none';
-  document.getElementById('regenInfo').style.display='none';
-  const log=document.getElementById('editLog');
-  log.innerHTML='<p>Processing edit…</p>';
-
-  const body={query};
-  if(sceneId) body.scene_id=sceneId;
-
-  const res=await fetch(API+'/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const {job_id}=await res.json();
-
-  const es=new EventSource(API+'/api/status/'+job_id);
-  es.onmessage=e=>{
-    const data=JSON.parse(e.data);
-    if(data.type==='progress'){
-      const p=document.createElement('p');
-      p.textContent='› '+data.message;
-      log.appendChild(p);log.scrollTop=log.scrollHeight;
-    }
-    if(data.type==='status' && data.status!=='running'){
-      es.close();
-      if(data.result){
-        document.getElementById('intentBox').style.display='block';
-        const intent=data.result.intent||{};
-        document.getElementById('intentPre').textContent=JSON.stringify(intent,null,2);
-        const editRes=data.result.edit_result||{};
-        const regen=editRes.regenerated_scenes||[];
-        if(regen.length){
-          const ri=document.getElementById('regenInfo');
-          ri.style.display='block';
-          ri.textContent='✓ Regenerated scenes: '+regen.join(', ');
-        }
-        if(data.result.version){
-          const p=document.createElement('p');p.className='done';
-          p.textContent=`✓ Snapshot saved as version ${data.result.version}`;
-          log.appendChild(p);
-        }
-        loadHistory();
-        loadSceneSelector();
-        loadOutputs();
-      }
-      if(data.status==='failed'){
-        const p=document.createElement('p');p.className='err';
-        p.textContent='✗ '+data.error;log.appendChild(p);
-      }
-    }
-  };
-}
-
-// ── Version history ────────────────────────────────────────────────────────
-async function loadHistory(){
-  const el=document.getElementById('historyList');
-  try{
-    const res=await fetch(API+'/api/history');
-    const {versions}=await res.json();
-    if(!versions||!versions.length){el.innerHTML='<p style="color:var(--muted)">No snapshots yet. Run the pipeline first.</p>';return;}
-    el.innerHTML='';
-    [...versions].reverse().forEach(v=>{
-      const d=document.createElement('div');
-      d.className='history-item';
-      d.innerHTML=`
-        <span class="ver">v${v.version}</span>
-        <div class="desc">${v.description||'(no description)'}<br>
-          <span style="font-size:.75rem;color:var(--muted)">
-            chars:${v.character_count} scenes:${v.scene_count} audio:${v.audio_count}
-          </span>
-        </div>
-        <span class="ts">${new Date(v.timestamp).toLocaleString()}</span>
-        <button class="btn btn-danger" style="font-size:.75rem;padding:5px 12px" onclick="revertTo(${v.version})">↩ Revert</button>`;
-      el.appendChild(d);
+    const {job_id} = await res.json();
+    document.getElementById('jobId').textContent = 'Job: ' + job_id;
+    streamJob(job_id, log, /*onComplete*/ result => {
+      completeStepper();
+      document.getElementById('runBtn').disabled = false;
+      showResult(result);
     });
-  }catch(e){el.innerHTML='<p style="color:var(--err)">Failed to load history.</p>';}
-}
-
-async function revertTo(version){
-  if(!confirm(`Revert to version ${version}? Current outputs will be overwritten.`)) return;
-  const res=await fetch(API+'/api/revert/'+version,{method:'POST'});
-  const data=await res.json();
-  if(data.status==='reverted'){
-    alert(`Reverted to version ${version} successfully.`);
-    loadHistory();
-  } else {
-    alert('Revert failed: '+JSON.stringify(data));
+  } catch (e) {
+    document.getElementById('runBtn').disabled = false;
+    log.innerHTML += `<p class="err">Failed to start: ${e.message}</p>`;
   }
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────
-loadOutputs();
+function streamJob(jobId, log, onComplete) {
+  const es = new EventSource(API + '/api/status/' + jobId);
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'progress') {
+      const p = document.createElement('p');
+      p.textContent = data.message;
+      log.appendChild(p);
+      log.scrollTop = log.scrollHeight;
+      tickStepperFromMessage(data.message);
+    }
+    if (data.type === 'status') {
+      const badge = document.getElementById('jobStatus');
+      if (data.status === 'completed') {
+        badge.className = 'badge badge-ok'; badge.textContent = 'Completed';
+        es.close();
+        onComplete && onComplete(data.result);
+      } else if (data.status === 'failed') {
+        badge.className = 'badge badge-err'; badge.textContent = 'Failed';
+        const p = document.createElement('p'); p.className = 'err';
+        p.textContent = data.error || 'Unknown error';
+        log.appendChild(p);
+        es.close();
+        document.getElementById('runBtn').disabled = false;
+      } else {
+        badge.className = 'badge badge-run'; badge.textContent = 'Running';
+      }
+    }
+  };
+  return es;
+}
+
+function showResult(r) {
+  if (!r) return;
+  document.getElementById('resultCard').style.display = 'block';
+  document.getElementById('resultSummary').innerHTML = `
+    <div class="stat"><div class="label">Mode</div><div class="value">${r.mode || '—'}</div></div>
+    <div class="stat"><div class="label">Validated</div><div class="value ${r.validated ? 'accent' : ''}">${r.validated ? 'Yes' : 'No'}</div></div>
+    <div class="stat"><div class="label">Characters</div><div class="value accent">${r.character_count || 0}</div></div>
+    <div class="stat"><div class="label">Scenes</div><div class="value accent">${r.raw_scene_count || 0}</div></div>
+    <div class="stat"><div class="label">Audio</div><div class="value accent">${r.audio_track_count || 0}</div></div>
+    <div class="stat"><div class="label">Video</div><div class="value accent">${r.video_track_count || 0}</div></div>
+    ${r.version ? `<div class="stat"><div class="label">Snapshot</div><div class="value accent">v${r.version}</div></div>` : ''}
+  `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase re-run
+// ─────────────────────────────────────────────────────────────────────────────
+async function rerunPhase(phase) {
+  const res = await fetch(API + '/api/phase/' + phase, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+  });
+  const {job_id} = await res.json();
+  alert(`Phase '${phase}' re-run started (job: ${job_id.slice(0,8)}…). Check Studio when complete.`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Studio tab — script, characters, scene cards
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadStudio() {
+  await Promise.allSettled([loadScript(), loadCast(), loadSceneCards()]);
+}
+async function loadOutputs() { return loadStudio(); }
+
+async function loadScript() {
+  try {
+    const r = await fetch(API + '/api/script'); const d = await r.json();
+    document.getElementById('scriptPre').textContent = d.script || '(empty)';
+  } catch { document.getElementById('scriptPre').textContent = 'Not generated yet.'; }
+}
+
+async function loadCast() {
+  const wrap = document.getElementById('castList');
+  try {
+    const r = await fetch(API + '/api/characters'); const d = await r.json();
+    const chars = d.characters || [];
+    if (!chars.length) { wrap.innerHTML = '<div class="empty">No characters yet.</div>'; return; }
+    wrap.innerHTML = chars.map(c => `
+      <div style="display:flex; gap:12px; padding:10px 0; border-bottom:1px solid var(--border-soft);">
+        <div style="flex:1;">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <strong>${c.name}</strong>
+            <span class="badge badge-info">${c.species || 'human'}</span>
+            <span class="badge badge-run">${c.voice_gender || 'neutral'}</span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
+            ${(c.appearance || '').substring(0, 140)}${(c.appearance || '').length > 140 ? '…' : ''}
+          </div>
+        </div>
+      </div>`).join('');
+  } catch {
+    wrap.innerHTML = '<div class="empty">Run the pipeline first.</div>';
+  }
+}
+
+async function loadSceneCards() {
+  const grid = document.getElementById('sceneGrid');
+  try {
+    const [outRes, scnRes] = await Promise.all([
+      fetch(API + '/api/outputs').then(r => r.json()),
+      fetch(API + '/api/scenes').then(r => r.json()),
+    ]);
+    const scenes = scnRes.scenes || [];
+    const audios = (outRes.audio_tracks || []).filter(f => f.endsWith('.wav') || f.endsWith('.mp3'));
+    const videos = (outRes.raw_scenes || []).filter(f => f.endsWith('.mp4'));
+    if (!scenes.length) {
+      grid.innerHTML = '<div class="empty"><div class="icon">🎞</div>No scenes yet — run the pipeline to populate.</div>';
+      return;
+    }
+    const v = bust();
+    grid.innerHTML = scenes.map(s => {
+      const sid = s.scene_id || '';
+      // Match audio file: prefer the merged primary, then any clip starting with scene_id.
+      const primary = audios.find(f => f.includes(sid + '_primary_merged'))
+                   || audios.find(f => f.startsWith(sid));
+      const video = videos.find(f => f.startsWith(sid));
+      const dialogues = (s.dialogues || []).slice(0, 5).map(d =>
+        `<div class="dialogue-line"><span class="char">${d.character || '?'}</span> &nbsp; ${escapeHtml(d.line || '')}</div>`
+      ).join('');
+
+      const mediaBlock = video
+        ? `<video controls preload="metadata" src="/api/file/raw_scenes/${encodeURIComponent(video)}?v=${v}"></video>`
+        : `<div style="aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; background:#000; border-radius:8px; color:var(--muted-soft); font-size:0.8rem;">No video yet</div>`;
+      const audioBlock = primary
+        ? `<audio controls preload="metadata" src="/api/file/audio_tracks/${encodeURIComponent(primary)}?v=${v}"></audio>`
+        : '';
+
+      return `
+        <div class="scene-card">
+          <div class="scene-header">
+            <div>
+              <div class="scene-id">${sid}</div>
+              <div class="scene-heading">${escapeHtml(s.heading || '')}</div>
+            </div>
+            <span class="badge badge-info">${(s.dialogues || []).length} lines</span>
+          </div>
+          <div class="media">${mediaBlock}${audioBlock}</div>
+          ${dialogues ? `<div class="dialogues">${dialogues}</div>` : ''}
+          <div class="actions">
+            <button class="btn btn-ghost btn-sm" onclick="prefillEdit('${sid}', 'Make this scene darker')">🌑 Darker</button>
+            <button class="btn btn-ghost btn-sm" onclick="prefillEdit('${sid}', 'Re-synthesize voice with more emotion')">🎭 Voice</button>
+            <button class="btn btn-ghost btn-sm" onclick="prefillEdit('${sid}', 'Regenerate visuals with cinematic style')">🎨 Visuals</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = `<div class="empty"><div class="icon">⚠</div>Failed to load: ${e.message}</div>`;
+  }
+}
+
+function escapeHtml(s) { return String(s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit agent
+// ─────────────────────────────────────────────────────────────────────────────
+function setEdit(q) { document.getElementById('editQuery').value = q; }
+function prefillEdit(sceneId, q) {
+  showTab('edit');
+  setTimeout(() => {
+    document.getElementById('sceneSelector').value = sceneId;
+    document.getElementById('editQuery').value = q;
+    document.getElementById('editQuery').focus();
+  }, 50);
+}
+
+async function loadSceneSelector() {
+  const sel = document.getElementById('sceneSelector');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All scenes</option>';
+  try {
+    const r = await fetch(API + '/api/scenes'); const d = await r.json();
+    (d.scenes || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.scene_id || '';
+      opt.textContent = `${s.scene_id} — ${(s.heading || '').substring(0, 56)}`;
+      sel.appendChild(opt);
+    });
+    if (prev) sel.value = prev;
+  } catch { /* not generated yet */ }
+}
+
+function persistChat() { localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(chatHistory.slice(-30))); }
+function appendChat(msg) { chatHistory.push(msg); persistChat(); renderChat(); }
+
+function renderChat() {
+  const wrap = document.getElementById('chatThread');
+  if (!chatHistory.length) {
+    wrap.innerHTML = '<div class="chat-empty">No edits yet — apply your first edit to start the conversation.</div>';
+    return;
+  }
+  wrap.innerHTML = chatHistory.map(m => {
+    if (m.role === 'user') {
+      return `<div class="chat-msg user"><div class="meta">${new Date(m.t).toLocaleTimeString()}${m.scene ? ` · scope: ${m.scene}` : ''}</div>${escapeHtml(m.text)}</div>`;
+    }
+    if (m.role === 'agent') {
+      const intent = m.intent || {};
+      const regen = m.regenerated || [];
+      return `<div class="chat-msg agent">
+        <div class="meta">Edit Agent · ${m.status === 'failed' ? '<span style="color:var(--err)">failed</span>' : (m.version ? `v${m.version}` : '')}</div>
+        ${m.text ? `<div>${escapeHtml(m.text)}</div>` : ''}
+        ${intent.intent ? `<div class="intent">intent: <strong>${intent.intent}</strong> · target: <strong>${intent.target}</strong> · scope: <strong>${intent.scope || 'all'}</strong></div>` : ''}
+        ${regen.length ? `<div class="regen">✓ Regenerated: ${regen.join(', ')}</div>` : ''}
+      </div>`;
+    }
+    return '';
+  }).join('');
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+async function sendEdit() {
+  const query = document.getElementById('editQuery').value.trim();
+  if (!query) { alert('Enter an edit instruction.'); return; }
+  const sceneId = document.getElementById('sceneSelector').value;
+
+  appendChat({role: 'user', text: query, scene: sceneId, t: Date.now()});
+  document.getElementById('editQuery').value = '';
+  document.getElementById('editBtn').disabled = true;
+
+  const placeholder = {role: 'agent', text: 'Processing…', status: 'running', t: Date.now()};
+  chatHistory.push(placeholder); renderChat();
+
+  try {
+    const res = await fetch(API + '/api/edit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query, scene_id: sceneId}),
+    });
+    const {job_id} = await res.json();
+
+    const es = new EventSource(API + '/api/status/' + job_id);
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'status' && data.status !== 'running') {
+        es.close();
+        document.getElementById('editBtn').disabled = false;
+        // Replace placeholder
+        chatHistory.pop();
+        if (data.status === 'failed') {
+          appendChat({role: 'agent', text: data.error || 'Edit failed', status: 'failed', t: Date.now()});
+        } else {
+          const r = data.result || {};
+          const intent = r.intent || {};
+          const editRes = r.edit_result || {};
+          const regen = editRes.regenerated_scenes || [];
+          appendChat({
+            role: 'agent',
+            text: regen.length ? 'Edit applied — regenerated affected scenes.' : 'Edit applied (no media regeneration needed).',
+            intent, regenerated: regen,
+            version: editRes && editRes.version || (r.version),
+            status: 'completed',
+            t: Date.now(),
+          });
+          // Auto-refresh studio + history so the user sees the new media immediately.
+          loadStudio(); loadHistory(); loadSceneSelector();
+        }
+      }
+    };
+  } catch (e) {
+    chatHistory.pop();
+    appendChat({role: 'agent', text: 'Network error: ' + e.message, status: 'failed', t: Date.now()});
+    document.getElementById('editBtn').disabled = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Version history
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const el = document.getElementById('historyList');
+  try {
+    const r = await fetch(API + '/api/history'); const {versions} = await r.json();
+    if (!versions || !versions.length) {
+      el.innerHTML = '<div class="empty">No snapshots yet.</div>';
+      return;
+    }
+    const reversed = [...versions].reverse();
+    const latest = reversed[0]?.version;
+    el.innerHTML = reversed.map(v => `
+      <div class="timeline-item ${v.version === latest ? 'current' : ''}">
+        <span class="ver">v${v.version}</span>
+        <div class="desc">${escapeHtml(v.description || '(no description)')}</div>
+        <div class="meta">
+          <span class="ts">${new Date(v.timestamp).toLocaleString()}</span>
+          <span class="badge badge-info">${v.character_count || 0} chars</span>
+          <span class="badge badge-info">${v.scene_count || 0} scenes</span>
+          <span class="badge badge-info">${v.audio_count || 0} audio</span>
+        </div>
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" onclick="revertTo(${v.version})">↩ Revert to v${v.version}</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="empty">Failed to load: ${e.message}</div>`;
+  }
+}
+
+async function revertTo(version) {
+  if (!confirm(`Revert to v${version}? Current outputs will be overwritten.`)) return;
+  const res = await fetch(API + '/api/revert/' + version, {method: 'POST'});
+  const data = await res.json();
+  if (data.status === 'reverted') {
+    loadHistory(); loadStudio(); loadSceneSelector();
+    alert(`Reverted to v${version}.`);
+  } else {
+    alert('Revert failed: ' + JSON.stringify(data));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+loadStudio();
 </script>
 </body>
 </html>

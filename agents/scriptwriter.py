@@ -1,51 +1,24 @@
+"""Phase 1 — Scriptwriter agent (LangChain LCEL chain)."""
 from typing import Dict, Optional, Tuple
 
+from tools.lc_chains import get_scriptwriter_chain
 from tools.llm_factory import describe_llm, get_chat_llm, llm_configured
 from tools.mcp_registry import invoke_tool, offline_screenplay_from_prompt
 
 
-def _try_llm_script(prompt: str) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
-    if not llm_configured():
+def _try_lc_script(prompt: str) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
+    """LangChain LCEL chain: prompt | llm | StrOutputParser."""
+    chain = get_scriptwriter_chain(temperature=0.7)
+    if chain is None:
         return None, None
-
-    llm = get_chat_llm(temperature=0.7)
-    if llm is None:
-        return None, None
-
-    meta = describe_llm(llm)
-    instructions = """Convert the user's idea into a multi-scene screenplay.
-
-Output rules (plain text only — no markdown, no **bold**, no code fences):
-- Scene headings like: Scene 1 - EXT. PARK - DAY  (or start lines with INT. / EXT.)
-- Action in parentheses: (Tom chases Jerry across the aisle.)
-- Dialogue: CHARACTER IN ALL CAPS: what they say
-  You may use JESSICA (V.O.): for voice-over; keep (V.O.) before the colon.
-- Write AT LEAST 4 scenes.
-- Each scene MUST have at least 3 dialogue exchanges — characters speaking back and forth.
-  Do NOT write scenes with only one line of dialogue; that is too short.
-- Use at least 2 named characters who interact with each other across scenes.
-- Each dialogue line should be 1-3 sentences so scenes last 15-20 seconds of speech.
-
-CRITICAL — Animal and non-human characters:
-- If the story has animal characters (cats, mice, dogs, birds, etc.), they MUST be written
-  as their actual animal species — NOT as humans.
-- Tom is a CAT. Jerry is a MOUSE. Never describe them as humans or give them human jobs.
-- Animal characters may speak (cartoon style) but their actions must reflect their animal nature
-  (Tom pounces, Jerry scurries, etc.).
-- In the action lines, always mention the character's species:
-  (Tom the orange tabby cat leaps over a suitcase.)
-  (Jerry the small grey mouse darts under a seat.)
-
-User idea:
-"""
+    # Best-effort metadata for the llm_invocations log.
+    meta = describe_llm(get_chat_llm(temperature=0.7)) if llm_configured() else None
     try:
-        response = llm.invoke(instructions + prompt)
+        text = chain.invoke({"idea": prompt})
     except Exception:
         return None, None
-
-    content = getattr(response, "content", "")
-    if isinstance(content, str) and content.strip():
-        return content.strip(), meta
+    if isinstance(text, str) and text.strip():
+        return text.strip(), meta
     return None, None
 
 
@@ -57,13 +30,11 @@ def scriptwriter_agent(state):
     prompt = state.get("input_prompt", "")
     inv = list(state.get("llm_invocations") or [])
     try:
-        seed_script = str(
-            invoke_tool("generate_script_segment", {"prompt": prompt})
-        )
+        seed_script = str(invoke_tool("generate_script_segment", {"prompt": prompt}))
     except Exception:
         seed_script = ""
 
-    script, llm_meta = _try_llm_script(prompt)
+    script, llm_meta = _try_lc_script(prompt)
     if llm_meta:
         inv.append({"step": "scriptwriter", **llm_meta})
     if not script:

@@ -355,6 +355,34 @@ def _generate_scene_keyframes(
     min_required = max(2, min(planned_keyframes, _env_int("PHASE2_MIN_KEYFRAMES", 3)))
     backend_errors: List[str] = []
 
+    image_backend = (os.getenv("IMAGE_BACKEND") or "pollinations").strip().lower()
+
+    # Pollinations.ai — keyless cloud image API (default backend).
+    if image_backend in ("pollinations", "cloud", "api"):
+        try:
+            from tools.pollinations_client import generate_pollinations_image
+
+            out_paths: List[Path] = []
+            for i, prompt in enumerate(prompts, start=1):
+                dest = keyframe_dir / f"{_slugify(scene_id)}_kf_{i:02d}.png"
+                try:
+                    produced = Path(
+                        generate_pollinations_image(
+                            prompt, dest, width=width, height=height,
+                        )
+                    )
+                    if produced.exists():
+                        out_paths.append(produced)
+                except Exception as exc:
+                    backend_errors.append(f"pollinations:kf_{i:02d}:{exc}")
+            if len(out_paths) >= min_required:
+                return out_paths, "pollinations", prompts
+            backend_errors.append(
+                f"pollinations:generated={len(out_paths)} planned={planned_keyframes} min_required={min_required}"
+            )
+        except Exception as exc:
+            backend_errors.append(f"pollinations:import_failed:{exc}")
+
     # Prefer HuggingFace Inference API (serverless — no local GPU) when configured.
     try:
         from tools.local_sd import hf_inference_api_configured, generate_hf_inference_image

@@ -2,13 +2,18 @@
 python-dotenv
 langgraph
 langchain
+langchain-core
 langchain-openai
 langchain-groq
+pydantic>=2
 
 # ── Phase 4: Web interface ───────────────────────────────────────────────────
 fastapi
 uvicorn[standard]
 python-multipart
+
+# ── MCP server (Phase 1 diagram requires an MCP tool surface) ───────────────
+mcp
 
 # ── Memory backend (falls back to JSON file store if missing) ────────────────
 chromadb

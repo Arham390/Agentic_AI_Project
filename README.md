@@ -58,11 +58,27 @@ User Prompt
 
 | Phase | Description | Key Tools |
 |-------|-------------|-----------|
-| **Phase 1** | Story & Script Generation | LangChain, Groq/OpenAI, Pydantic |
+| **Phase 1** | Story & Script Generation | LangChain LCEL chains, Groq/OpenAI, Pydantic schemas |
 | **Phase 2** | Audio Generation & TTS | Edge-TTS, Coqui/pyttsx3, FFmpeg |
-| **Phase 3** | Video Generation & Composition | Stable Diffusion, OpenCV, FFmpeg, imageio |
-| **Phase 4** | Web Interface | FastAPI, Uvicorn, HTML/JS, SSE |
-| **Phase 5** | Intelligent Edit Agent & Undo | LangGraph, State Manager, JSON snapshots |
+| **Phase 3** | Video Generation & Composition | Pollinations.ai (default) or Stable Diffusion (local), OpenCV, FFmpeg |
+| **Phase 4** | Web Interface | FastAPI, Uvicorn, vanilla JS, SSE |
+| **Phase 5** | Intelligent Edit Agent & Undo | LangGraph, LangChain intent chain, state snapshots |
+| **MCP**     | External Tool Server          | FastMCP — exposes generate_image / TTS / scene rendering over stdio or SSE |
+
+### LangChain integration
+
+Every LLM call goes through an LCEL chain in [`tools/lc_chains.py`](tools/lc_chains.py)
+with structured `PydanticOutputParser` outputs (schemas in [`tools/schemas.py`](tools/schemas.py)):
+
+| Chain | Output Schema |
+|-------|---------------|
+| `get_scriptwriter_chain()`     | screenplay text |
+| `get_character_chain()`        | `CharacterRoster` |
+| `get_validator_chain()`        | `ScriptValidation` |
+| `get_script_repair_chain()`    | repaired screenplay text |
+| `get_intent_chain()`           | `EditIntent` (Phase 5) |
+| `get_scene_patch_chain()`      | `ScenePatchList` (Phase 5) |
+| `get_style_extraction_chain()` | style phrase |
 
 ---
 
@@ -90,10 +106,19 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 Copy `.env_example` to `.env` and fill in your keys:
 
 ```dotenv
+# ── LLM (LangChain) ──────────────────────────────────────────────
 GROQ_API_KEY=your_groq_key_here
 GROQ_MODEL=llama-3.3-70b-versatile
-PHASE2_STRICT_PRODUCTION=0   # 0 = use fallback renderer (no GPU needed)
-USE_LOCAL_SD=0               # 1 = download Stable Diffusion (~4GB)
+
+# ── Image generation backend (NEW) ───────────────────────────────
+# pollinations  → Pollinations.ai cloud API (default, no key needed)
+# local         → Local Stable Diffusion / ComfyUI
+IMAGE_BACKEND=pollinations
+POLLINATIONS_MODEL=flux            # flux | turbo | sdxl
+
+# ── Phase 2/3 toggles ────────────────────────────────────────────
+PHASE2_STRICT_PRODUCTION=1   # require a real image backend (Pollinations counts)
+USE_LOCAL_SD=0               # 1 = download Stable Diffusion (~4GB) for IMAGE_BACKEND=local
 ```
 
 ### 3a. Run via CLI
@@ -116,6 +141,31 @@ uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+### 3c. Run the MCP Server (optional)
+
+The pipeline tools are exposed over the [Model Context Protocol](https://modelcontextprotocol.io)
+for use with Claude Desktop, the `mcp` CLI, or any other MCP client:
+
+```powershell
+# stdio transport (default — pipe in from desktop clients)
+python mcp_server.py
+
+# HTTP/SSE transport
+$env:MCP_TRANSPORT = "sse"; python mcp_server.py
+```
+
+Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "agentic-film-pipeline": {
+      "command": "python",
+      "args": ["D:/uni-work/Agentic_AI_Project/mcp_server.py"]
+    }
+  }
+}
+```
 
 ---
 

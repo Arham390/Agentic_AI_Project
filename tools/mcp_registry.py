@@ -1,8 +1,9 @@
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from tools.memory_tools import commit_memory
 from tools.phase2_media import (
@@ -97,68 +98,76 @@ def _write_image_stub(output_dir: Path, slug: str, prompt: str, footer: str) -> 
     return str(path.resolve())
 
 
-def generate_image(prompt: str) -> str:
+def _image_backend() -> str:
+    """User-controlled image backend.
+
+    IMAGE_BACKEND=pollinations  → cloud (Pollinations.ai, default)
+    IMAGE_BACKEND=local         → local Stable Diffusion / ComfyUI
     """
-    Image backends (first match wins):
-      1) Local SD: set SD_LOCAL_MODEL or USE_LOCAL_SD=1 (Hugging Face diffusers, CPU/CUDA/MPS).
-      2) ComfyUI: set COMFYUI_CHECKPOINT and run the ComfyUI server.
-      3) Stub .txt if neither is configured or both fail.
+    return (os.getenv("IMAGE_BACKEND") or "pollinations").strip().lower()
+
+
+def generate_image(prompt: str) -> str:
+    """Generate one character/scene image and return its absolute path.
+
+    Backend order depends on IMAGE_BACKEND:
+      • pollinations (default): Pollinations.ai → local SD → ComfyUI → stub
+      • local:                  local SD → ComfyUI → Pollinations → stub
     """
     output_dir = Path(__file__).resolve().parents[1] / "outputs" / "image_assets"
     output_dir.mkdir(parents=True, exist_ok=True)
     slug = _slugify(prompt)
     dest_png = output_dir / f"{slug}.png"
 
-    local_err = None
-    try:
-        from tools.local_sd import generate_local_sd_image, local_sd_configured
+    backend = _image_backend()
+    errors: List[str] = []
 
-        if local_sd_configured():
-            return generate_local_sd_image(prompt, dest_png)
-    except Exception as exc:
-        local_err = exc
-        print(f"[generate_image] Local SD failed ({exc}); trying ComfyUI if configured...")
+    def _try_pollinations() -> Optional[str]:
+        try:
+            from tools.pollinations_client import generate_pollinations_image
+            return generate_pollinations_image(prompt, dest_png)
+        except Exception as exc:
+            errors.append(f"Pollinations: {exc}")
+            return None
 
-    try:
-        from tools.comfy_client import comfyui_configured, generate_character_image_via_comfyui
+    def _try_local_sd() -> Optional[str]:
+        try:
+            from tools.local_sd import generate_local_sd_image, local_sd_configured
+            if local_sd_configured():
+                return generate_local_sd_image(prompt, dest_png)
+        except Exception as exc:
+            errors.append(f"Local SD: {exc}")
+        return None
 
-        if comfyui_configured():
-            return generate_character_image_via_comfyui(prompt, dest_png)
-    except Exception as exc:
-        parts = [f"ComfyUI generation failed:\n{exc}"]
-        if local_err is not None:
-            parts.insert(0, f"Local diffusers SD failed:\n{local_err}\n")
-        stub = output_dir / f"{slug}.txt"
-        stub.write_text(
-            f"Image prompt:\n{prompt}\n\n"
-            + "\n\n".join(parts)
-            + "\n\n"
-            "Local SD: pip install -r requirements-sd.txt and USE_LOCAL_SD=1\n"
-            "ComfyUI: start server and set COMFYUI_CHECKPOINT\n",
-            encoding="utf-8",
-        )
-        print(f"[generate_image] ComfyUI failed, wrote stub: {stub.name} ({exc})")
-        return str(stub.resolve())
+    def _try_comfyui() -> Optional[str]:
+        try:
+            from tools.comfy_client import (
+                comfyui_configured, generate_character_image_via_comfyui,
+            )
+            if comfyui_configured():
+                return generate_character_image_via_comfyui(prompt, dest_png)
+        except Exception as exc:
+            errors.append(f"ComfyUI: {exc}")
+        return None
 
-    if local_err is not None:
-        stub = output_dir / f"{slug}.txt"
-        stub.write_text(
-            f"Image prompt:\n{prompt}\n\n"
-            f"Local diffusers SD failed:\n{local_err}\n\n"
-            "Install: pip install -r requirements-sd.txt\n"
-            "CPU PyTorch (Windows): pip install torch --index-url https://download.pytorch.org/whl/cpu\n"
-            "Then set USE_LOCAL_SD=1 or SD_LOCAL_MODEL=stabilityai/sd-turbo\n",
-            encoding="utf-8",
-        )
-        print(f"[generate_image] Local SD failed, wrote stub: {stub.name} ({local_err})")
-        return str(stub.resolve())
+    if backend == "local":
+        chain = [_try_local_sd, _try_comfyui, _try_pollinations]
+    else:
+        chain = [_try_pollinations, _try_local_sd, _try_comfyui]
 
-    return _write_image_stub(
-        output_dir,
-        slug,
-        prompt,
-        "Stub: enable local SD (USE_LOCAL_SD=1 or SD_LOCAL_MODEL=...) or ComfyUI (COMFYUI_CHECKPOINT=...).",
+    for fn in chain:
+        result = fn()
+        if result:
+            return result
+
+    stub_msg = (
+        f"All image backends failed (IMAGE_BACKEND={backend}):\n"
+        + "\n".join(f"- {e}" for e in errors)
+        + "\n\nPollinations: requires internet connectivity (no key needed)\n"
+        "Local SD: pip install -r requirements-sd.txt and USE_LOCAL_SD=1\n"
+        "ComfyUI: start server and set COMFYUI_CHECKPOINT\n"
     )
+    return _write_image_stub(output_dir, slug, prompt, stub_msg)
 
 
 def get_task_graph(scene_manifest: Dict[str, Any]) -> Dict[str, Any]:

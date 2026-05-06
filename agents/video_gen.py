@@ -240,7 +240,13 @@ def video_gen_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 candidate["attempt"] = attempt
                 attempts.append({"attempt": attempt, "backend": backend, "frame_count": int(candidate.get("frame_count", 0))})
 
-                if strict and not ("local-sd" in backend or "comfyui" in backend or "motion-synth" in backend):
+                if strict and not (
+                    "local-sd" in backend
+                    or "comfyui" in backend
+                    or "motion-synth" in backend
+                    or "pollinations" in backend
+                    or "hf-inference-api" in backend
+                ):
                     raise RuntimeError(
                         f"Scene {scene_id} used non-production backend '{backend or 'unknown'}'"
                     )

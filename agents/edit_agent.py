@@ -16,6 +16,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _OUTPUTS_DIR = _PROJECT_ROOT / "outputs"
 sys.path.insert(0, str(_PROJECT_ROOT))
 
+from tools.lc_chains import (
+    get_intent_chain,
+    get_scene_patch_chain,
+    get_style_extraction_chain,
+)
 from tools.llm_factory import describe_llm, get_chat_llm, llm_configured
 
 
@@ -112,50 +117,102 @@ def hydrate_state_for_edit(state: Dict[str, Any]) -> Dict[str, Any]:
     return s
 
 
+def _deterministic_patch_scenes(
+    scenes_slice: List[Dict[str, Any]], instruction: str
+) -> Optional[List[Dict[str, Any]]]:
+    """Apply pattern-based dialogue rewrites without an LLM.
+
+    Handles common phrasings so partial edits still work when the model is
+    unavailable or returns unparseable JSON:
+
+      • "make CHARACTER say 'NEW LINE'"
+      • "change CHARACTER's line to 'NEW LINE'"
+      • "replace 'OLD' with 'NEW'"
+    """
+    if not scenes_slice or not instruction.strip():
+        return None
+
+    instr = instruction.strip()
+    out: List[Dict[str, Any]] = [dict(s) for s in scenes_slice if isinstance(s, dict)]
+    changed = False
+
+    say_re = re.compile(
+        r"(?:make|have)\s+(\w[\w\s]+?)\s+say\s+['\"](.+?)['\"]",
+        re.IGNORECASE,
+    )
+    change_line_re = re.compile(
+        r"(?:change|update|set)\s+(\w[\w\s]+?)(?:'s)?\s+(?:line|dialogue)\s+to\s+['\"](.+?)['\"]",
+        re.IGNORECASE,
+    )
+    replace_re = re.compile(
+        r"replace\s+['\"](.+?)['\"]\s+with\s+['\"](.+?)['\"]",
+        re.IGNORECASE,
+    )
+
+    for m in list(say_re.finditer(instr)) + list(change_line_re.finditer(instr)):
+        char = m.group(1).strip().lower()
+        new_line = m.group(2).strip()
+        for scene in out:
+            for d in scene.get("dialogues") or []:
+                if str(d.get("character", "")).strip().lower() == char:
+                    d["line"] = new_line
+                    changed = True
+
+    for m in replace_re.finditer(instr):
+        old, new = m.group(1), m.group(2)
+        for scene in out:
+            for d in scene.get("dialogues") or []:
+                line = str(d.get("line", ""))
+                if old in line:
+                    d["line"] = line.replace(old, new)
+                    changed = True
+
+    return out if changed else None
+
+
 def _llm_patch_scenes_for_instruction(
     scenes_slice: List[Dict[str, Any]], instruction: str
 ) -> Optional[List[Dict[str, Any]]]:
-    """Return updated scene dicts (same scene_ids) or None if LLM unavailable / parse fails."""
+    """Use the LangChain scene_patch chain; fall back to deterministic patcher.
+
+    Returns updated scene dicts (same scene_ids) or None if both paths fail.
+    """
     if not scenes_slice or not instruction.strip():
         return None
-    if not llm_configured():
-        return None
-    llm = get_chat_llm(temperature=0.2)
-    if llm is None:
-        return None
 
-    payload = json.dumps(scenes_slice, indent=2, ensure_ascii=True)
-    prompt = (
-        "You are editing a film pipeline scene manifest. Apply the user's instruction to these scenes only.\n"
-        "Return ONLY a JSON array of scene objects. Each output object MUST keep the same scene_id as its input.\n"
-        "You may change heading, dialogues (array of {character, line}), actions, style. Preserve structure.\n"
-        "No markdown fences, no commentary.\n\n"
-        f"Instruction:\n{instruction}\n\nScenes JSON:\n{payload}"
-    )
-    try:
-        response = llm.invoke(prompt)
-        content = getattr(response, "content", "") or ""
-        if not isinstance(content, str):
-            return None
-        match = re.search(r"\[.*\]", content, re.DOTALL)
-        if not match:
-            return None
-        parsed = json.loads(match.group(0))
-        if not isinstance(parsed, list):
-            return None
-        by_id = {str(p.get("scene_id", "")).strip(): p for p in parsed if isinstance(p, dict) and p.get("scene_id")}
-        out: List[Dict[str, Any]] = []
-        for sc in scenes_slice:
-            if not isinstance(sc, dict):
-                continue
-            sid = str(sc.get("scene_id", "")).strip()
-            if sid and sid in by_id:
-                out.append(by_id[sid])
-            else:
-                out.append(sc)
-        return out if out else None
-    except Exception:
-        return None
+    chain = get_scene_patch_chain(temperature=0.2)
+    if chain is not None:
+        try:
+            payload = json.dumps(scenes_slice, indent=2, ensure_ascii=True)
+            patch_list = chain.invoke({"instruction": instruction, "scenes": payload})
+            if patch_list is not None:
+                by_id = {p.scene_id: p for p in patch_list.scenes}
+                out: List[Dict[str, Any]] = []
+                for sc in scenes_slice:
+                    if not isinstance(sc, dict):
+                        continue
+                    sid = str(sc.get("scene_id", "")).strip()
+                    if sid and sid in by_id:
+                        merged = dict(sc)
+                        p = by_id[sid]
+                        if p.heading is not None:
+                            merged["heading"] = p.heading
+                        if p.dialogues is not None:
+                            merged["dialogues"] = [d.model_dump() for d in p.dialogues]
+                        if p.actions is not None:
+                            merged["actions"] = list(p.actions)
+                        if p.style is not None:
+                            merged["style"] = p.style
+                        out.append(merged)
+                    else:
+                        out.append(sc)
+                if out:
+                    return out
+        except Exception:
+            pass
+
+    # Fall back to deterministic patcher so dialogue edits still work without an LLM.
+    return _deterministic_patch_scenes(scenes_slice, instruction)
 
 
 def _merge_scene_patch_into_manifest(
@@ -253,44 +310,21 @@ def _rule_based_intent(query: str) -> Dict[str, Any]:
 
 
 def _llm_intent(query: str) -> Optional[Dict[str, Any]]:
-    """LLM-powered intent classification."""
-    if not llm_configured():
+    """LangChain intent classification chain → EditIntent → dict."""
+    chain = get_intent_chain(temperature=0.0)
+    if chain is None:
         return None
-    llm = get_chat_llm(temperature=0)
-    if llm is None:
-        return None
-
-    valid_intents_str = ", ".join(VALID_INTENTS.keys())
-    valid_targets = "audio | video_frame | video | script | unknown"
-    system_prompt = f"""You are an intent classification agent for a video editing pipeline.
-
-Classify the user's edit query into a structured JSON intent object.
-Valid intents: {valid_intents_str}
-Valid targets: {valid_targets}
-
-Output ONLY valid JSON matching this schema exactly:
-{{
-  "intent": "<one of the valid intents>",
-  "target": "<audio|video_frame|video|script|unknown>",
-  "scope": "<all|character:NAME|scene:ID>",
-  "parameters": {{<any relevant key-value pairs>}}
-}}
-
-User query: {query}"""
-
     try:
-        response = llm.invoke(system_prompt)
-        content = getattr(response, "content", "") or ""
-        # Extract JSON from response.
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict) and "intent" in parsed:
-                parsed["confidence"] = "llm"
-                return parsed
+        result = chain.invoke({"query": query})
     except Exception:
-        pass
-    return None
+        return None
+    if result is None:
+        return None
+    payload = result.model_dump()
+    payload.setdefault("parameters", {})
+    payload["parameters"].setdefault("raw_query", query)
+    payload["confidence"] = "llm"
+    return payload
 
 
 def classify_intent(query: str) -> Dict[str, Any]:
@@ -469,21 +503,15 @@ def _extract_style_from_query(raw_query: str) -> str:
     if not q:
         return ""
 
-    # LLM path — clean, concise style extraction
-    if llm_configured():
-        llm = get_chat_llm(temperature=0)
-        if llm is not None:
-            try:
-                resp = llm.invoke(
-                    "Extract a concise visual style description (max 12 words) for a Stable Diffusion prompt "
-                    "from the following video edit instruction. Output ONLY the style phrase, no explanations.\n\n"
-                    f"Instruction: {q}"
-                )
-                style = (getattr(resp, "content", "") or "").strip().strip('"').strip("'")
-                if style and len(style) < 120:
-                    return style
-            except Exception:
-                pass
+    # LangChain LCEL chain — concise style extraction
+    chain = get_style_extraction_chain(temperature=0.0)
+    if chain is not None:
+        try:
+            style = (chain.invoke({"instruction": q}) or "").strip().strip('"').strip("'")
+            if style and len(style) < 120:
+                return style
+        except Exception:
+            pass
 
     # Rule-based fallback — map recognisable keywords to proper SD style phrases
     q_low = q.lower()
