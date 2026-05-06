@@ -176,7 +176,13 @@ VALID_INTENTS = {
 INTENT_KEYWORDS: List[tuple[str, str]] = [
     (r"voice|tone|speak|narrat|tts|audio|sound", "re_synthesize_audio"),
     (r"music|background|bgm|soundtrack|score", "add_background_music"),
-    (r"dark|bright|light|color|colour|visual|style|look|aesthetic", "change_visual_style"),
+    (
+        r"dark|bright|light|color|colour|visual|style|look|aesthetic|"
+        r"sci.fi|scifi|cyberpunk|noir|horror|fantasy|western|neon|gothic|"
+        r"cinematic|dramatic|moody|theme|atmosphere|vibe|gritty|pastel|"
+        r"warm|cool|saturated|desaturated|vintage|retro|futuristic|apocalyptic",
+        "change_visual_style",
+    ),
     (r"character.design|appearance|redesign|character look", "change_character_design"),
     (r"subtitle|caption|text.overlay", "remove_subtitle"),
     (r"speed up|faster|slow|slower|timing", "speed_up_scene"),
@@ -324,12 +330,44 @@ def _merge_scene_tracks(
     return out
 
 
+def _build_voice_synth_state(
+    manifest: Dict[str, Any],
+    target_scenes: List[Dict[str, Any]],
+    characters: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "scene_manifest_data": {**manifest, "scenes": target_scenes},
+        "audio_tracks": [],
+        "llm_invocations": [],
+        "characters": characters,
+    }
+
+
+def _build_video_gen_state(
+    manifest: Dict[str, Any],
+    target_scenes: List[Dict[str, Any]],
+    characters: List[Dict[str, Any]],
+    images: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "scene_manifest_data": {**manifest, "scenes": target_scenes},
+        "video_tracks": [],
+        "images": images,
+        "characters": characters,
+        "llm_invocations": [],
+    }
+
+
 def _finalize_scene_media(
     state: Dict[str, Any],
+    updated_manifest: Dict[str, Any],
     partial_audio: List[Dict[str, Any]],
     partial_video: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Re-run face swap + lip-sync like the main graph so raw .mp4 files match new frames/audio."""
+    """Merge new audio/video tracks with prior state then run face-swap + lip-sync.
+
+    Produces updated raw .mp4 files on disk and returns the combined track lists.
+    """
     from agents.face_swap import face_swap_agent
     from agents.lip_sync import lip_sync_agent
 
@@ -337,21 +375,22 @@ def _finalize_scene_media(
     merged_video = _merge_scene_tracks(state.get("video_tracks") or [], partial_video or [])
 
     sub: Dict[str, Any] = {
-        "scene_manifest_data": state.get("scene_manifest_data", {}),
-        "scene_tasks": state.get("scene_tasks", []),
-        "images": state.get("images", []),
+        "scene_manifest_data": updated_manifest,
+        "scene_tasks": state.get("scene_tasks") or [],
+        "images": state.get("images") or [],
         "audio_tracks": merged_audio,
         "video_tracks": merged_video,
-        "face_swaps": state.get("face_swaps", []),
-        "llm_invocations": state.get("llm_invocations", []),
+        "face_swaps": state.get("face_swaps") or [],
+        "characters": state.get("characters") or [],
+        "llm_invocations": [],
     }
     sub.update(face_swap_agent(sub))
     sub.update(lip_sync_agent(sub))
     return {
         "audio_tracks": merged_audio,
         "video_tracks": merged_video,
-        "face_swaps": sub.get("face_swaps", []),
-        "raw_scenes": sub.get("raw_scenes", []),
+        "face_swaps": sub.get("face_swaps") or [],
+        "raw_scenes": sub.get("raw_scenes") or [],
     }
 
 
@@ -360,117 +399,176 @@ def _finalize_scene_media(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _execute_audio_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
-    """Re-synthesise voice audio for scenes affected by the edit."""
+    """Re-synthesise voice audio for the scoped scenes, then recompose .mp4."""
     from agents.voice_synth import voice_synth_agent
 
-    scope = intent.get("scope", "all")
-    scene_manifest = state.get("scene_manifest_data", {})
-    if isinstance(scene_manifest, dict):
-        target_scenes = _filter_scenes_by_scope(scene_manifest.get("scenes", []), scope)
-        filtered_manifest = {**scene_manifest, "scenes": target_scenes}
-    else:
-        filtered_manifest = scene_manifest
+    scene_manifest = state.get("scene_manifest_data") or {}
+    if not isinstance(scene_manifest, dict):
+        return {"audio_edit_applied": False, "error": "No scene manifest found"}
 
-    base = {
-        "scene_manifest_data": filtered_manifest,
-        "audio_tracks": [],
-        "llm_invocations": [],
-        "characters": state.get("characters") or [],
-    }
-    result = voice_synth_agent(base)
-    partial_audio = result.get("audio_tracks", [])
-    manifest_full = state.get("scene_manifest_data", {}) if isinstance(state.get("scene_manifest_data"), dict) else {}
-    finalized = _finalize_scene_media(state, partial_audio, [])
+    scope = intent.get("scope", "all")
+    target_scenes = _filter_scenes_by_scope(list(scene_manifest.get("scenes") or []), scope)
+
+    audio_result = voice_synth_agent(
+        _build_voice_synth_state(scene_manifest, target_scenes, state.get("characters") or [])
+    )
+
+    finalized = _finalize_scene_media(
+        state, scene_manifest,
+        audio_result.get("audio_tracks") or [],
+        [],  # keep existing video frames
+    )
     return {
         "audio_edit_applied": True,
-        **result,
+        "regenerated_scenes": [s.get("scene_id") for s in target_scenes],
+        "scene_manifest_data": scene_manifest,
         **finalized,
-        "scene_manifest_data": manifest_full,
     }
+
+
+def _extract_style_from_query(raw_query: str) -> str:
+    """Convert a free-text visual edit query into a concise SD-prompt style string.
+
+    Tries the LLM first; falls back to a simple rule-based extraction.
+    """
+    q = raw_query.strip()
+    if not q:
+        return ""
+
+    # LLM path — clean, concise style extraction
+    if llm_configured():
+        llm = get_chat_llm(temperature=0)
+        if llm is not None:
+            try:
+                resp = llm.invoke(
+                    "Extract a concise visual style description (max 12 words) for a Stable Diffusion prompt "
+                    "from the following video edit instruction. Output ONLY the style phrase, no explanations.\n\n"
+                    f"Instruction: {q}"
+                )
+                style = (getattr(resp, "content", "") or "").strip().strip('"').strip("'")
+                if style and len(style) < 120:
+                    return style
+            except Exception:
+                pass
+
+    # Rule-based fallback — map recognisable keywords to proper SD style phrases
+    q_low = q.lower()
+    _STYLE_MAP = [
+        ("sci.fi|scifi|futuristic",               "sci-fi futuristic, neon lights, high tech"),
+        ("cyberpunk",                              "cyberpunk city, neon, rain, dark, 2049"),
+        ("noir",                                   "film noir, black and white, hard shadows"),
+        ("horror|scary|dark",                      "dark horror, low-key lighting, ominous shadows"),
+        ("fantasy|magical",                        "epic fantasy, golden light, painterly"),
+        ("western|cowboy",                         "western frontier, warm dusty tones"),
+        ("apocalyptic|post.apocalyptic",           "post-apocalyptic wasteland, desaturated, gritty"),
+        ("gothic",                                 "gothic atmosphere, dark arches, cold tones"),
+        ("neon",                                   "neon-lit, vibrant colours, night city"),
+        ("warm|golden|sunset",                     "warm golden hour, orange tones, cinematic"),
+        ("cool|cold|blue",                         "cold blue tones, overcast, desaturated"),
+        ("bright|vivid|vibrant",                   "bright vivid high-key lighting, saturated"),
+        ("pastel|soft",                            "soft pastel tones, dreamy, gentle lighting"),
+        ("vintage|retro",                          "vintage film look, grain, faded colours"),
+        ("dramatic",                               "dramatic cinematic lighting, high contrast"),
+        ("moody",                                  "moody atmospheric, rim-lit, dark palette"),
+    ]
+    for pattern, style in _STYLE_MAP:
+        if re.search(pattern, q_low):
+            return style
+
+    # Last resort — use the raw query verbatim (SD handles natural language)
+    return q
 
 
 def _execute_video_frame_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
-    """Re-generate video frames for affected scenes."""
+    """Re-generate video frames for the scoped scenes with a new visual style, then recompose .mp4."""
+    import copy
     from agents.video_gen import video_gen_agent
 
-    params = intent.get("parameters", {})
+    scene_manifest = state.get("scene_manifest_data") or {}
+    if not isinstance(scene_manifest, dict):
+        return {"video_frame_edit_applied": False, "error": "No scene manifest found"}
+
     scope = intent.get("scope", "all")
-    scene_manifest = state.get("scene_manifest_data", {})
+    params = intent.get("parameters") or {}
+    raw_q = (params.get("raw_query") or "").strip()
 
-    target_scenes: List[Any] = []
-    if isinstance(scene_manifest, dict):
-        scenes = scene_manifest.get("scenes", [])
-        target_scenes = _filter_scenes_by_scope(scenes, scope)
-        for scene in target_scenes:
-            if "style" not in scene:
-                scene["style"] = "cinematic"
-            raw_q = (params.get("raw_query") or "").lower()
-            if "dark" in raw_q:
-                scene["style"] = "dark moody cinematic low-key lighting"
-            elif "bright" in raw_q:
-                scene["style"] = "bright vivid high-key lighting"
-            elif "style" in raw_q or "aesthetic" in raw_q:
-                scene["style"] = params.get("style", "artistic cinematic")
+    # Resolve the visual style from the user's query
+    new_style = _extract_style_from_query(raw_q)
 
-        # Persist the updated manifest to disk
-        _write_manifest(scene_manifest)
+    # Deep-copy scenes so manifest mutations don't affect other references
+    all_scenes = [copy.deepcopy(s) if isinstance(s, dict) else s for s in (scene_manifest.get("scenes") or [])]
+    target_scenes = _filter_scenes_by_scope(all_scenes, scope)
 
-        # Only regenerate the targeted scenes
-        filtered_manifest = {**scene_manifest, "scenes": target_scenes}
-    else:
-        filtered_manifest = scene_manifest
+    # Stamp the resolved style onto every targeted scene
+    for scene in target_scenes:
+        if not isinstance(scene, dict):
+            continue
+        if new_style:
+            scene["style"] = new_style
+        elif "style" not in scene:
+            scene["style"] = "cinematic"
 
-    base = {
-        "scene_manifest_data": filtered_manifest,
-        "video_tracks": [],
-        "images": state.get("images", []),
-        "characters": state.get("characters") or [],
-        "llm_invocations": [],
-    }
-    result = video_gen_agent(base)
-    partial_video = result.get("video_tracks", [])
-    finalized = _finalize_scene_media(state, [], partial_video)
+    # Rebuild and persist the updated manifest
+    updated_manifest = {**scene_manifest, "scenes": all_scenes}
+    _write_manifest(updated_manifest)
 
-    # Report which scenes were regenerated
-    regen_ids = [s.get("scene_id") for s in target_scenes] if isinstance(scene_manifest, dict) else []
+    video_result = video_gen_agent(
+        _build_video_gen_state(
+            updated_manifest, target_scenes,
+            state.get("characters") or [],
+            state.get("images") or [],
+        )
+    )
+
+    finalized = _finalize_scene_media(
+        state, updated_manifest,
+        [],  # keep existing audio
+        video_result.get("video_tracks") or [],
+    )
     return {
         "video_frame_edit_applied": True,
-        "regenerated_scenes": regen_ids,
-        **result,
+        "regenerated_scenes": [s.get("scene_id") for s in target_scenes],
+        "scene_manifest_data": updated_manifest,
         **finalized,
-        "scene_manifest_data": scene_manifest if isinstance(scene_manifest, dict) else {},
     }
 
 
 def _execute_video_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
-    """Recompose final video with updated parameters."""
+    """Recompose .mp4 files from existing audio + frames (no re-render)."""
     from agents.lip_sync import lip_sync_agent
 
-    base = {
-        "scene_manifest_data": state.get("scene_manifest_data", {}),
-        "audio_tracks": state.get("audio_tracks", []),
-        "video_tracks": state.get("video_tracks", []),
-        "face_swaps": state.get("face_swaps", []),
-        "scene_tasks": state.get("scene_tasks", []),
+    scene_manifest = state.get("scene_manifest_data") or {}
+    result = lip_sync_agent({
+        "scene_manifest_data": scene_manifest,
+        "audio_tracks": state.get("audio_tracks") or [],
+        "video_tracks": state.get("video_tracks") or [],
+        "face_swaps": state.get("face_swaps") or [],
+        "scene_tasks": state.get("scene_tasks") or [],
+        "characters": state.get("characters") or [],
         "raw_scenes": [],
+    })
+    return {
+        "video_edit_applied": True,
+        "scene_manifest_data": scene_manifest,
+        **result,
     }
-    result = lip_sync_agent(base)
-    return {"video_edit_applied": True, **result}
 
 
 def _execute_script_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
-    """Re-run the scriptwriter and cascade through character + image agents."""
-    params = intent.get("parameters", {})
-    prompt = (params.get("prompt") or params.get("raw_query") or
-              "Regenerate the script with improvements.")
-
+    """Regenerate the script, characters, and images, then produce new audio/video/mp4."""
     from agents.scriptwriter import scriptwriter_agent
     from agents.validator import validator_agent
     from agents.character import character_agent
     from agents.image import image_agent
     from agents.scene_parser import scene_parser_agent
+    from agents.voice_synth import voice_synth_agent
+    from agents.video_gen import video_gen_agent
 
-    s = {
+    params = intent.get("parameters") or {}
+    prompt = (params.get("prompt") or params.get("raw_query") or
+              "Regenerate the script with improvements.")
+
+    s: Dict[str, Any] = {
         "input_prompt": prompt, "manual_script": "", "mode": "autonomous",
         "validated": False, "validation_report": {}, "characters": [],
         "images": [], "scene_manifest_data": {}, "scene_tasks": [],
@@ -484,80 +582,116 @@ def _execute_script_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[
     s.update(image_agent(s))
     s.update(scene_parser_agent(s))
 
-    # Persist all outputs to disk
-    script_path = _OUTPUTS_DIR / "script.txt"
-    script_path.write_text(s.get("script", ""), encoding="utf-8")
-
-    char_db_path = _OUTPUTS_DIR / "character_db.json"
-    char_db_path.write_text(
-        json.dumps({"character_count": len(s.get("characters", [])), "characters": s.get("characters", [])}, indent=2),
+    # Persist script + characters + manifest to disk before media regen
+    (_OUTPUTS_DIR / "script.txt").write_text(s.get("script") or "", encoding="utf-8")
+    (_OUTPUTS_DIR / "character_db.json").write_text(
+        json.dumps({"character_count": len(s.get("characters") or []), "characters": s.get("characters") or []}, indent=2),
         encoding="utf-8",
     )
+    new_manifest = s.get("scene_manifest_data") or {}
+    if isinstance(new_manifest, dict) and new_manifest.get("scenes"):
+        _write_manifest(new_manifest)
 
-    manifest = s.get("scene_manifest_data", {})
-    if isinstance(manifest, dict):
-        _write_manifest(manifest)
+    # Cascade: regenerate audio + frames + .mp4 for all new scenes
+    scenes = (new_manifest.get("scenes") or []) if isinstance(new_manifest, dict) else []
+    if scenes:
+        audio_result = voice_synth_agent(
+            _build_voice_synth_state(new_manifest, scenes, s.get("characters") or [])
+        )
+        video_result = video_gen_agent(
+            _build_video_gen_state(new_manifest, scenes, s.get("characters") or [], s.get("images") or [])
+        )
+        finalized = _finalize_scene_media(
+            s, new_manifest,
+            audio_result.get("audio_tracks") or [],
+            video_result.get("video_tracks") or [],
+        )
+        s.update(finalized)
 
-    return {"script_edit_applied": True, **s}
+    return {
+        "script_edit_applied": True,
+        "regenerated_scenes": [sc.get("scene_id") for sc in scenes if isinstance(sc, dict)],
+        "scene_manifest_data": new_manifest,
+        **{k: s[k] for k in ("characters", "images", "audio_tracks", "video_tracks", "face_swaps", "raw_scenes", "script") if k in s},
+    }
 
 
 def _execute_scene_edit(intent: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
-    """Edit a specific scene's content (dialogue, actions) and regenerate its media."""
+    """Apply a free-text edit to one or more scenes, then regenerate audio + frames + .mp4."""
     from agents.voice_synth import voice_synth_agent
     from agents.video_gen import video_gen_agent
 
-    params = intent.get("parameters", {})
-    scope = intent.get("scope", "all")
-    scene_manifest = state.get("scene_manifest_data", {})
-
+    scene_manifest = state.get("scene_manifest_data") or {}
     if not isinstance(scene_manifest, dict):
         return {"scene_edit_applied": False, "error": "No scene manifest found"}
 
-    scenes = scene_manifest.get("scenes", [])
-    target_scenes = _filter_scenes_by_scope(scenes, scope)
+    scope = intent.get("scope", "all")
+    raw_instr = str((intent.get("parameters") or {}).get("raw_query") or "").strip()
 
-    if not target_scenes:
+    # ── Step 1: apply the instruction to the manifest ──────────────────────
+    import copy
+    # Work on a deep copy of the manifest so we can freely mutate
+    working_manifest: Dict[str, Any] = copy.deepcopy(scene_manifest)
+
+    # Identify which scenes to update
+    target_ids: List[str] = [
+        str(s.get("scene_id", "")).strip()
+        for s in _filter_scenes_by_scope(working_manifest.get("scenes") or [], scope)
+        if isinstance(s, dict) and s.get("scene_id")
+    ]
+    if not target_ids:
         return {"scene_edit_applied": False, "error": f"No scenes matched scope: {scope}"}
 
-    if intent.get("intent") == "change_scene_dialogue":
-        raw_instr = str((intent.get("parameters") or {}).get("raw_query") or "").strip()
-        if raw_instr:
-            slice_copy = [dict(s) for s in target_scenes if isinstance(s, dict)]
-            patched = _llm_patch_scenes_for_instruction(slice_copy, raw_instr)
-            if patched:
-                _merge_scene_patch_into_manifest(scene_manifest, patched)
+    target_scenes_before = [
+        s for s in (working_manifest.get("scenes") or [])
+        if isinstance(s, dict) and str(s.get("scene_id", "")).strip() in target_ids
+    ]
 
-    # Persist updated manifest
-    _write_manifest(scene_manifest)
+    patched_via_llm = False
+    if raw_instr:
+        patched = _llm_patch_scenes_for_instruction(
+            [copy.deepcopy(s) for s in target_scenes_before], raw_instr
+        )
+        if patched:
+            _merge_scene_patch_into_manifest(working_manifest, patched)
+            patched_via_llm = True
 
-    # Regenerate audio for targeted scenes
-    audio_manifest = {**scene_manifest, "scenes": target_scenes}
-    audio_result = voice_synth_agent({
-        "scene_manifest_data": audio_manifest,
-        "audio_tracks": [],
-        "llm_invocations": [],
-        "characters": state.get("characters") or [],
-    })
+    # ── Step 2: re-extract target_scenes from the UPDATED manifest ─────────
+    # Must happen AFTER the LLM patch so audio/video see the new text.
+    target_scenes = [
+        s for s in (working_manifest.get("scenes") or [])
+        if isinstance(s, dict) and str(s.get("scene_id", "")).strip() in target_ids
+    ]
 
-    # Regenerate video for targeted scenes
-    video_result = video_gen_agent({
-        "scene_manifest_data": audio_manifest,
-        "video_tracks": [],
-        "images": state.get("images", []),
-        "characters": state.get("characters") or [],
-        "llm_invocations": [],
-    })
+    # ── Step 3: persist the updated manifest ───────────────────────────────
+    _write_manifest(working_manifest)
 
-    regen_ids = [s.get("scene_id") for s in target_scenes]
-    finalized = _finalize_scene_media(
-        state,
-        audio_result.get("audio_tracks", []),
-        video_result.get("video_tracks", []),
+    # ── Step 4: regenerate audio with the updated dialogue text ────────────
+    audio_result = voice_synth_agent(
+        _build_voice_synth_state(working_manifest, target_scenes, state.get("characters") or [])
     )
+
+    # ── Step 5: regenerate frames for the targeted scenes ──────────────────
+    video_result = video_gen_agent(
+        _build_video_gen_state(
+            working_manifest, target_scenes,
+            state.get("characters") or [],
+            state.get("images") or [],
+        )
+    )
+
+    # ── Step 6: face-swap (if enabled) + lip-sync → new .mp4 ──────────────
+    finalized = _finalize_scene_media(
+        state, working_manifest,
+        audio_result.get("audio_tracks") or [],
+        video_result.get("video_tracks") or [],
+    )
+
     return {
         "scene_edit_applied": True,
-        "regenerated_scenes": regen_ids,
-        "scene_manifest_data": scene_manifest,
+        "dialogue_patched_via_llm": patched_via_llm,
+        "regenerated_scenes": target_ids,
+        "scene_manifest_data": working_manifest,
         **finalized,
     }
 

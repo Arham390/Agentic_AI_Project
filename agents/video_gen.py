@@ -95,11 +95,23 @@ def _build_scene_video(scene: Dict[str, Any], idx: int) -> Dict[str, Any]:
     character_names = _scene_characters(scene)
     lead_name = character_names[0] if character_names else "Lead"
 
-    try:
-        ref = invoke_tool("query_stock_footage", {"character_name": lead_name})
-        style = str(ref.get("reference_style", "cinematic framing")) if isinstance(ref, dict) else "cinematic framing"
-    except Exception:
-        style = "cinematic framing"
+    # Scene-level style override always wins (set by edit_agent or scene manifest).
+    scene_style = str(scene.get("style", "")).strip()
+
+    if scene_style:
+        # Blend the scene style with the character reference style for a richer prompt.
+        try:
+            ref = invoke_tool("query_stock_footage", {"character_name": lead_name})
+            char_style = str(ref.get("reference_style", "")) if isinstance(ref, dict) else ""
+        except Exception:
+            char_style = ""
+        style = f"{scene_style}, {char_style}".strip(", ") if char_style else scene_style
+    else:
+        try:
+            ref = invoke_tool("query_stock_footage", {"character_name": lead_name})
+            style = str(ref.get("reference_style", "cinematic framing")) if isinstance(ref, dict) else "cinematic framing"
+        except Exception:
+            style = "cinematic framing"
 
     dialogues = scene.get("dialogues", [])
     dialogue_count = len(dialogues) if isinstance(dialogues, list) else 0
